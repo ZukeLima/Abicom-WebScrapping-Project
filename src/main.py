@@ -7,17 +7,30 @@ import os
 import sys
 import logging
 import argparse
-import re                               ### ADICIONADO ###
-import pandas as pd                     ### ADICIONADO ###
-from datetime import datetime           ### ADICIONADO ### (se não estiver já importado)
+import re
+import pandas as pd
+from datetime import datetime
 
 # Importações do projeto
 from src.scrapers.abicom_scraper import AbicomScraper
 # Importa configs necessárias, incluindo ORGANIZE_BY_MONTH
-from src.config import MAX_PAGES, OUTPUT_DIR, ORGANIZE_BY_MONTH, DATE_FORMAT_FOLDER ### MODIFICADO ###
-from src.utils.file_utils import file_exists # Importar se necessário para análise
+from src.config import MAX_PAGES, OUTPUT_DIR, ORGANIZE_BY_MONTH, DATE_FORMAT_FOLDER
+# from src.utils.file_utils import file_exists # Removido se não usado
 
-# Configuração de logging (mantida como está)
+# --- ADICIONADO: Importa a função de análise externa ---
+# (Mantido da versão anterior - assume que você quer a análise avançada)
+try:
+    from src.analise_imagens import executar_e_reportar_analise
+    analysis_function_available = True
+except ImportError as ie:
+    executar_e_reportar_analise = None
+    analysis_function_available = False
+    logging.error(f"Não foi possível importar a função de análise avançada de src.analise_imagens: {ie}")
+    logging.error("A análise avançada (com OCR) não estará disponível.")
+# --- FIM DO IMPORT ADICIONADO ---
+
+
+# Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -28,59 +41,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-### ADICIONADO: Definições de Regex para análise (movidas para cá) ###
+# Definições de Regex para análise interna (se for usada)
 filename_date_pattern = re.compile(r"ppi-(\d{2}-\d{2}-\d{4})\.(jpg|jpeg)", re.IGNORECASE)
 folder_date_pattern = re.compile(r"(\d{2})-(\d{4})")
 
-### ADICIONADO: Função de Análise (copiada e adaptada) ###
+# Função de Análise ANTIGA (Definição mantida, mas não chamada via --analyze na versão anterior)
 def analisar_imagens_baixadas(diretorio_base: str, organizar_por_mes: bool) -> pd.DataFrame:
     """
     Analisa os arquivos de imagem no diretório de saída e retorna um DataFrame Pandas.
+    *** ESTA É A VERSÃO ANTIGA - SÓ METADADOS DO ARQUIVO ***
     """
     dados_arquivos = []
-
     if not os.path.exists(diretorio_base):
-        logger.error(f"Diretório de imagens não encontrado: {diretorio_base}")
+        logger.error(f"[Análise Interna Antiga] Diretório não encontrado: {diretorio_base}")
         return pd.DataFrame(dados_arquivos)
-
-    logger.info(f"Analisando diretório: {diretorio_base} (Organizar por mês: {organizar_por_mes})")
-
+    logger.info(f"[Análise Interna Antiga] Analisando diretório: {diretorio_base} ...")
     for root, dirs, files in os.walk(diretorio_base):
         for filename in files:
-            # Simplificado para verificar extensão aqui
             file_lower = filename.lower()
             if file_lower.endswith('.jpg') or file_lower.endswith('.jpeg'):
                 filepath = os.path.join(root, filename)
-                folder_name = os.path.basename(root) # Nome da pasta pai
+                folder_name = os.path.basename(root)
                 extracted_date_from_filename = None
                 folder_month = None
                 folder_year = None
                 file_size = 0
-
-                # Extrair data do nome do arquivo
                 match_filename = filename_date_pattern.search(filename)
                 if match_filename:
                     extracted_date_from_filename = match_filename.group(1)
                     try:
                         datetime.strptime(extracted_date_from_filename, '%d-%m-%Y')
                     except ValueError:
-                        logger.warning(f"Formato de data inválido no nome do arquivo: {filename}")
+                        logger.warning(f"[Análise Interna Antiga] Formato de data inválido: {filename}")
                         extracted_date_from_filename = None
-
-                # Extrair mês/ano da pasta se organizado por mês
                 if organizar_por_mes and root != diretorio_base:
                     match_folder = folder_date_pattern.match(folder_name)
                     if match_folder:
-                        folder_month = match_folder.group(1)
-                        folder_year = match_folder.group(2)
+                        folder_month, folder_year = match_folder.groups()
                     else:
-                         logger.warning(f"Nome da pasta não segue o padrão MM-YYYY: {folder_name}")
-
-                # Obter tamanho do arquivo
+                        # Comentado para evitar poluição no log normal
+                        # logger.warning(f"[Análise Interna Antiga] Pasta não segue padrão MM-YYYY: {folder_name}")
+                        pass
                 try:
                     file_size = os.path.getsize(filepath)
                 except OSError as e:
-                    logger.error(f"Erro ao obter tamanho do arquivo {filepath}: {e}")
+                    logger.error(f"[Análise Interna Antiga] Erro tamanho {filepath}: {e}")
 
                 dados_arquivos.append({
                     "caminho_completo": filepath,
@@ -91,59 +96,46 @@ def analisar_imagens_baixadas(diretorio_base: str, organizar_por_mes: bool) -> p
                     "ano_pasta": folder_year,
                     "tamanho_bytes": file_size
                 })
-
     if not dados_arquivos:
-         logger.warning("Nenhum arquivo de imagem encontrado para análise.")
-
+        logger.warning("[Análise Interna Antiga] Nenhum arquivo de imagem encontrado.")
     return pd.DataFrame(dados_arquivos)
 
-# Função parse_arguments (mantida como está)
+# Função parse_arguments
 def parse_arguments():
     """
     Analisa os argumentos da linha de comando.
-
-    Returns:
-        argparse.Namespace: Argumentos analisados
     """
     parser = argparse.ArgumentParser(
         description='Web Scraper para o site da Abicom - categoria PPI'
     )
-
     parser.add_argument(
         '--start-page',
         type=int,
         default=1,
         help='Página inicial para o scraping (padrão: 1)'
     )
-
     parser.add_argument(
         '--max-pages',
         type=int,
         default=MAX_PAGES,
         help=f'Número máximo de páginas para processar (padrão: {MAX_PAGES})'
     )
-
     parser.add_argument(
         '--output-dir',
         type=str,
-        # Usa o OUTPUT_DIR importado como padrão
-        default=OUTPUT_DIR, ### MODIFICADO ###
+        default=OUTPUT_DIR,
         help=f'Diretório de saída para as imagens (padrão: {OUTPUT_DIR})'
     )
-
     parser.add_argument(
         '--verbose',
         action='store_true',
         help='Habilita logging detalhado'
     )
-    
-    # ### ADICIONADO: Argumento opcional para rodar ou não a análise ###
     parser.add_argument(
         '--analyze',
         action='store_true', # Se presente, roda a análise
-        help='Executa a análise dos arquivos baixados após o scraping.'
+        help='Executa a análise avançada (com OCR) dos arquivos baixados após o scraping.' # Help atualizado
     )
-
     return parser.parse_args()
 
 
@@ -151,32 +143,38 @@ def main():
     """
     Função principal.
     """
-    # Analisa os argumentos
     args = parse_arguments()
 
-    # Configura o nível de logging
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Diretório de dados para o CSV da análise
+    data_dir_analysis = os.path.dirname(args.output_dir)
+    os.makedirs(data_dir_analysis, exist_ok=True) # Cria se não existir
+
     logger.info(f"Iniciando scraper da Abicom (páginas {args.start_page} a {args.start_page + args.max_pages - 1})")
-    logger.info(f"O scraper irá acessar cada post encontrado e baixar a primeira imagem JPG")
-    logger.info(f"As imagens serão organizadas em pastas mensais (MM-YYYY): {ORGANIZE_BY_MONTH}")
+    logger.info(f"Diretório de saída das imagens: {args.output_dir}")
+    logger.info(f"Organizar imagens por mês: {ORGANIZE_BY_MONTH}")
+    if args.analyze:
+        if analysis_function_available:
+            logger.info(f"Análise avançada pós-scraping habilitada. CSV será salvo em: {data_dir_analysis}")
+        else:
+            logger.warning("Flag --analyze fornecida, mas a função de análise avançada não pôde ser importada. Nenhuma análise será executada.")
 
-    # Garante que o diretório de saída exista (usando o argumento, que tem default do config)
-    os.makedirs(args.output_dir, exist_ok=True) ### MODIFICADO ###
+    # Garante que o diretório de saída das imagens exista
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    total_downloads = 0 # Inicializa fora do try para garantir que existe
+    total_downloads = 0
+    scraper_success = False
+    exception_occurred = None
+
+    # --- Bloco Try/Except do Scraper ---
     try:
-        # Cria uma instância do serviço de imagens com o diretório de saída dos argumentos
         from src.services.image_service import ImageService
-        # Passa o diretório de saída definido nos argumentos
-        image_service = ImageService(output_dir=args.output_dir) ### MODIFICADO ###
-
-        # Pré-indexa as imagens existentes para otimizar a verificação
+        image_service = ImageService(output_dir=args.output_dir)
         logger.info("Pré-indexando imagens existentes...")
         image_service.pre_check_monthly_images()
 
-        # Inicializa e executa o scraper
         with AbicomScraper(image_service=image_service) as scraper:
             total_downloads = scraper.run(
                 start_page=args.start_page,
@@ -187,80 +185,67 @@ def main():
             logger.info(f"Scraping concluído. Total de {total_downloads} novas imagens baixadas.")
         else:
             logger.info("Scraping concluído. Nenhuma nova imagem baixada.")
+        scraper_success = True
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
         logger.info("Scraping interrompido pelo usuário.")
-        # ### MODIFICADO: Decide se roda análise mesmo com interrupção ###
-        # Poderia optar por não rodar a análise aqui, ou rodar com o que foi baixado
-        if args.analyze:
-             logger.info("Executando análise com os arquivos baixados até a interrupção...")
-        else:
-             return 1 # Sai sem analisar
-
+        exception_occurred = e # Armazena a exceção para decidir o return code
     except ImportError as e:
-        # Captura erro específico se faltar alguma dependência do scraper
         logger.exception(f"Erro de importação durante o scraping. Verifique as dependências: {e}")
-        return 1 # Sai sem analisar
-
+        exception_occurred = e
     except Exception as e:
         logger.exception(f"Erro durante o scraping: {e}")
-        # ### MODIFICADO: Decide se roda análise mesmo com erro ###
-        # Geralmente não se roda análise se o scraping falhou, mas é uma opção
-        if args.analyze:
-             logger.warning("Scraping encontrou um erro, mas a análise será tentada...")
-        else:
-            return 1 # Sai sem analisar
+        exception_occurred = e
+    # --- Fim do Bloco Try/Except do Scraper ---
 
-    # --- Análise Pós-Scraping (Executada APÓS o bloco try do scraper, se não saiu antes) --- ### ADICIONADO ###
-    if args.analyze:
-        logger.info("Iniciando análise dos arquivos baixados...")
+
+    # --- Análise Pós-Scraping ---
+    # Executa SE a flag --analyze foi passada E a função externa foi importada com sucesso
+    if args.analyze and analysis_function_available:
+        logger.info("Iniciando análise avançada (com OCR) dos arquivos baixados...")
         try:
-            # Usa o diretório de saída dos argumentos e a config de organização
-            df_analise = analisar_imagens_baixadas(args.output_dir, ORGANIZE_BY_MONTH)
+            # Chama a função externa importada
+            executar_e_reportar_analise(
+                diretorio_imagens=args.output_dir,
+                organizar_por_mes=ORGANIZE_BY_MONTH,
+                diretorio_csv=data_dir_analysis
+            )
+            # O log/print de conclusão é feito dentro da função externa
 
-            if not df_analise.empty:
-                print("\n--- Tabela de Análise das Imagens (Primeiras 5 linhas) ---")
-                try:
-                    print(df_analise.head().to_markdown(index=False))
-                except ImportError:
-                    print(df_analise.head().to_string(index=False)) # Fallback
-
-                print("\n--- Resumo da Análise ---")
-                print(f"Total de imagens analisadas: {len(df_analise)}")
-
-                if ORGANIZE_BY_MONTH:
-                    contagem_pasta = df_analise[df_analise['pasta_pai'] != '[RAIZ]']['pasta_pai'].value_counts()
-                    if not contagem_pasta.empty:
-                        print("\nContagem de imagens por pasta (Mês-Ano):")
-                        print(contagem_pasta.to_string())
-
-                datas_validas = df_analise['data_extraida_arquivo'].notna().sum()
-                print(f"\nImagens com data extraída do nome: {datas_validas}")
-
-                tamanho_total_mb = df_analise['tamanho_bytes'].sum() / (1024 * 1024)
-                tamanho_medio_kb = (df_analise['tamanho_bytes'].mean() / 1024) if len(df_analise) > 0 else 0
-                print(f"\nTamanho total dos arquivos: {tamanho_total_mb:.2f} MB")
-                print(f"Tamanho médio por arquivo: {tamanho_medio_kb:.2f} KB")
-                logger.info("Análise dos arquivos concluída.")
-            else:
-                logger.warning("Nenhuma imagem encontrada no diretório para análise.")
-
-        except ImportError:
-             logger.error("Pandas não está instalado. Execute 'pip install pandas' e adicione aos requirements para habilitar a análise.")
+        except ImportError as e:
+             # Captura erro se faltar dependência DA ANÁLISE (ex: easyocr, Pillow, torch)
+             logger.error(f"Erro de importação ao tentar executar a análise avançada: {e}.")
+             print(f"\nERRO: Falta dependência para a análise avançada: {e}")
         except Exception as e_analysis:
-            logger.exception(f"Erro durante a análise dos arquivos: {e_analysis}")
+            logger.exception(f"Erro durante a execução da análise avançada: {e_analysis}")
 
-    return 0 # Retorno de sucesso geral
+    elif args.analyze and not analysis_function_available:
+        logger.error("A análise foi solicitada (--analyze), mas a função necessária não pôde ser carregada (ver logs anteriores).")
+        print("\nERRO: Análise solicitada, mas função de análise avançada não disponível.")
+
+    # Decide o status de saída final
+    # Sucesso (0) se scraper ok ou interrupção, falha (1) caso contrário
+    if isinstance(exception_occurred, ImportError) and "src.services" in str(exception_occurred):
+        # Erro de importação do *scraper* é fatal
+        return 1
+    elif exception_occurred and not isinstance(exception_occurred, KeyboardInterrupt):
+        # Outro erro do *scraper* também é fatal
+        return 1
+    else:
+         # Scraper funcionou OU foi interrompido -> sucesso
+        return 0
 
 
 if __name__ == "__main__":
     # Verifica se Pandas está disponível se a análise for solicitada
+    # A análise avançada também precisa de pandas, então este check é útil
     if '--analyze' in sys.argv:
         try:
             import pandas
         except ImportError:
             print("ERRO: A biblioteca Pandas é necessária para a análise (--analyze), mas não está instalada.", file=sys.stderr)
             print("Instale com: pip install pandas", file=sys.stderr)
-            sys.exit(1) # Sai antes de tentar rodar main()
+            print("Verifique também se Pillow e EasyOCR (com torch) estão instalados para a análise avançada.", file=sys.stderr)
+            # Não sai imediatamente, permite que o main() tente importar e falhe graciosamente
 
     sys.exit(main())
