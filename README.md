@@ -1,71 +1,78 @@
-# Baixador e Renomeador de Imagens JPG (Exemplo: Abicom PPI)
+# Abicom Web Scraper
 
-Este script Python baixa imagens `.jpg` de páginas sequenciais de um site (ótimo para categorias ou arquivos paginados). Depois de baixar, ele procura por arquivos que tenham `de-YYYY-MM-DD-as` no nome e os renomeia para o formato `YYYY-MM-DD[_N].jpg`. Ele usa um ambiente virtual (`venv`) para manter as dependências organizadas.
+Este projeto realiza web scraping no site da Abicom para coletar dados da categoria PPI.
 
----
+## Estrutura do Projeto
 
-## ✨ O que ele faz?
+```
+abicom-scraper/
+├── .devcontainer/     # Configuração do VS Code + Docker
+├── .vscode/           # Configurações do VS Code
+├── src/               # Código-fonte do projeto
+├── data/              # Dados extraídos (criado automaticamente)
+├── requirements.txt   # Dependências do projeto
+└── README.md          # Este arquivo
+```
 
-* Varre páginas sequenciais de um site (configurado para o padrão `/page/N/`).
-* Encontra imagens (`<img>`) com links (`src`) terminando em `.jpg`.
-* Transforma URLs relativas de imagens em absolutas.
-* Baixa as imagens `.jpg` para uma pasta local que você define.
-* Não baixa imagens repetidas (verifica se o arquivo já existe).
-* Busca por `de-YYYY-MM-DD-as` no nome dos arquivos baixados.
-* Extrai e valida a data (`YYYY-MM-DD`) encontrada no nome.
-* Renomeia o arquivo para `YYYY-MM-DD.jpg` (ou `YYYY-MM-DD_N.jpg` se o nome já existir).
-* Tem tratamento básico de erros (HTTP, Timeout, Arquivo) e pausas educadas (`time.sleep`) para não sobrecarregar o site.
-* Mostra o progresso no terminal enquanto roda.
+## Requisitos
 
----
+- Docker
+- VS Code com extensão Remote - Containers
 
-## 💻 Tecnologias
+## Configuração do Ambiente
 
-* **Linguagem:** Python 3
-* **Ambiente:** `venv`
-* **Bibliotecas:**
-    * `requests`
-    * `beautifulsoup4`
-    * `os`
-    * `urllib.parse`
-    * `time`
-    * `re`
-    * `datetime`
+### Usando VS Code + Docker (recomendado)
 
----
+1. Instale o Docker na sua máquina.
+2. Instale o VS Code.
+3. Instale a extensão "Remote - Containers" no VS Code.
+4. Clone este repositório.
+5. Abra o projeto no VS Code.
+6. Quando solicitado, clique em "Reabrir no Container" ou use o comando `Remote-Containers: Reopen in Container`.
+7. Aguarde o ambiente ser configurado automaticamente.
 
-## 📋 Pré-requisitos
+### Usando venv (sem Docker)
 
-Você vai precisar de:
-
-* Python 3 (v3.6 ou mais recente).
-* Pip (normalmente já vem com o Python).
-* Git (para baixar o código).
-* Acesso à internet.
-
----
-
-## ⚙️ Instalação
-
-Para instalar e configurar:
+Se preferir não usar Docker, você pode configurar um ambiente virtual Python:
 
 ```bash
-# 1. Baixe o código do GitHub:
-git clone [https://github.com/ZukeLima/abicom_webscraping.git](https://github.com/ZukeLima/abicom_webscraping.git)
-
-# 2. Entre na pasta que foi criada:
-cd abicom_webscraping
-
-# 3. Crie o ambiente virtual:
+# Criar o ambiente virtual
 python -m venv venv
 
-# 4. Ative o ambiente virtual:
-#    Windows (cmd):      .\venv\Scripts\activate.bat
-#    Windows (PowerShell): .\venv\Scripts\Activate.ps1
-#      (Talvez precise rodar: Set-ExecutionPolicy Unrestricted -Scope Process)
-#    Linux / macOS:      source venv/bin/activate
+# Ativar o ambiente virtual (Windows)
+venv\Scripts\activate
 
-# 5. Instale as bibliotecas necessárias (já com o ambiente ativado):
-pip install requests beautifulsoup4
+# Ativar o ambiente virtual (Linux/Mac)
+source venv/bin/activate
 
-# Pronto!
+# Instalar dependências
+pip install -r requirements.txt
+```
+
+## Uso
+
+Para executar o scraper:
+
+```bash
+# Dentro do container Docker ou com venv ativo
+python src/scraper.py
+```
+
+Por padrão, o script irá:
+1. Acessar até 3 páginas da categoria PPI da Abicom
+2. Extrair os links dos artigos encontrados
+3. Acessar cada artigo para extrair seus dados
+4. Salvar os resultados em um arquivo CSV na pasta `data/`
+
+## Personalização
+
+Você pode modificar o comportamento do scraper editando os parâmetros no arquivo `src/scraper.py`:
+
+- Altere `max_pages` para processar mais ou menos páginas
+- Modifique a classe `AbicomScraper` para extrair diferentes informações
+
+## Notas
+
+- O scraper inclui pausas (sleeps) entre requisições para evitar sobrecarga no servidor
+- Os dados são salvos em formato CSV com timestamp para evitar sobrescrever arquivos anteriores
+- Use este scraper de forma responsável e em conformidade com os termos de uso do site alvo
