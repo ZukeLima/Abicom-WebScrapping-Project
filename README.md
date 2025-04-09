@@ -1,174 +1,161 @@
-# Abicom Web Scraper
+# Abicom Web Scraper & Image Analyzer
 
-Este projeto realiza web scraping no site da Abicom para coletar imagens JPG da categoria PPI.
+![Tenor GIF](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)
+
+Este projeto combina duas funcionalidades principais:
+1.  **Web Scraping:** Coleta imagens JPG da categoria PPI do site da Abicom de forma eficiente e organizada.
+2.  **Análise de Imagens:** Processa as imagens baixadas para extrair metadados, propriedades da imagem, dados EXIF e **conteúdo textual usando OCR**, salvando os resultados em um arquivo CSV detalhado. A análise utiliza processamento paralelo para melhor performance.
+
+**Desenvolvido por:** Lucas Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
+
+---
 
 ## Funcionalidades
 
-- Varre páginas sequenciais do site usando o formato correto de paginação (`/categoria/ppi/page/N/`).
-- Extrai links para posts individuais de cada página de listagem.
-- **Organiza as imagens por pastas mensais (formato MM-YYYY)** para facilitar a gestão.
-- Verifica de forma eficiente se uma imagem já foi baixada **antes** de acessar a página do post.
-- Acessa cada post individualmente e extrai APENAS a primeira imagem JPG de cada post.
-- Ignora imagens em páginas de listagem, focando apenas em imagens dentro de posts individuais.
-- Filtra imagens que parecem ser elementos de UI (ícones, logos, etc.).
-- Nomeia as imagens usando o padrão `ppi-DD-MM-YYYY.jpg` extraído do nome da página/post.
-- Se o padrão de data não for encontrado no URL, usa o nome do post ou página como identificador.
-- Evita o download de imagens repetidas.
-- Rastreia URLs já visitadas para evitar processamento duplicado.
-- Gera relatórios de downloads por mês.
-- Implementa tratamento de erros para falhas de HTTP, timeout e problemas de arquivo.
-- Utiliza pausas (`time.sleep`) para não sobrecarregar o site.
+### Scraping (`src/main.py`)
+
+* Varre páginas sequenciais da categoria PPI da Abicom (`/categoria/ppi/page/N/`).
+* Extrai links para posts individuais de cada página de listagem.
+* **Organiza as imagens por pastas mensais** (formato `MM-YYYY`) dentro de `data/images/` (configurável).
+* Verifica de forma eficiente se uma imagem já foi baixada **antes** de acessar a página do post, evitando downloads repetidos e requisições desnecessárias.
+* Acessa cada post relevante e extrai **apenas a primeira imagem JPG** encontrada no conteúdo principal.
+* Ignora imagens em páginas de listagem e filtra elementos comuns de UI (ícones, logos, etc.).
+* Nomeia as imagens usando o padrão `ppi-DD-MM-YYYY.jpg`, extraindo a data da URL do post sempre que possível.
+* Implementa tratamento de erros HTTP e pausas (`time.sleep`) para não sobrecarregar o site.
+
+### Análise de Imagens (`src/analise_imagens.py`, acionado por `main.py --analyze`)
+
+* Analisa todos os arquivos `.jpg` e `.jpeg` no diretório de saída configurado.
+* Utiliza **Processamento Paralelo** (`concurrent.futures`) para acelerar a análise, especialmente a etapa de OCR.
+* Extrai um conjunto rico de informações para cada imagem:
+    * **Metadados do Arquivo:** Caminho completo, nome do arquivo, pasta pai, tamanho em bytes.
+    * **Datas Inferidas:** Data extraída do nome do arquivo, Mês/Ano extraídos da pasta pai (se aplicável).
+    * **Propriedades da Imagem (via Pillow):** Largura (px), Altura (px), Modo de cor (ex: RGB), Formato (ex: JPEG).
+    * **Dados EXIF:** Extrai **todos** os metadados EXIF disponíveis e os salva como uma string JSON na coluna `exif_data_json`.
+    * **Conteúdo Textual (via EasyOCR):** Realiza OCR na imagem para extrair o texto visível. O texto bruto reconhecido é salvo na coluna `texto_easyocr`.
+* Gera um **arquivo CSV detalhado** com todas as informações extraídas na pasta `data/`, nomeado com timestamp (ex: `analise_paralela_ocr_YYYYMMDD_HHMMSS.csv`).
+* Exibe um resumo da análise no console após a conclusão.
+* Pode ser executado de forma independente (`python src/analise_imagens.py`).
 
 ## Estrutura do Projeto
 
-```
-abicom-scraper/
-├── .devcontainer/     # Configuração do VS Code + Docker
+Abicom-WebScrapping-Project/
+├── .devcontainer/     # (Opcional) Configuração VS Code + Docker
 │   ├── devcontainer.json
 │   └── Dockerfile
-├── .vscode/           # Configurações do VS Code
+├── .vscode/           # (Opcional) Configurações VS Code
 │   └── settings.json
-├── src/
-│   ├── config.py      # Configurações globais
-│   ├── main.py        # Ponto de entrada
-│   ├── models/        # Modelos de dados
-│   ├── services/      # Serviços (HTTP, download, etc.)
-│   ├── utils/         # Utilitários
-│   └── scrapers/      # Implementações de scrapers
-├── data/images/       # Pasta para imagens baixadas (criada automaticamente)
-├── requirements.txt   # Dependências do projeto
+├── src/               # Código fonte principal
+│   ├── init.py
+│   ├── config.py      # Configurações globais (URLs, pastas, etc.)
+│   ├── main.py        # Ponto de entrada principal (Scraper + chamada da Análise)
+│   ├── analise_imagens.py # Lógica de análise detalhada (Pillow, OCR, CSV)
+│   ├── models/        # Modelos de dados (ex: Image)
+│   ├── services/      # Serviços (HTTP Client, Image Service)
+│   ├── scrapers/      # Scrapers (Base e AbicomScraper)
+│   └── utils/         # Utilitários (URL, Arquivos)
+├── data/              # Dados gerados
+│   ├── images/        # Imagens baixadas (organizadas por mês, ex: 04-2025/)
+│   └── *.csv          # CSVs gerados pela análise
+├── requirements.txt   # Dependências Python do projeto
+├── scraper.log        # Arquivo de log gerado pela execução
 └── README.md          # Este arquivo
-```
 
-## Estrutura de Arquivos
 
-O scraper salva as imagens em uma estrutura de diretórios organizada por mês:
+## Saída Gerada
 
-```
-data/images/
-├── 04-2025/         # Pasta para abril de 2025
-│   ├── ppi-01-04-2025.jpg
-│   ├── ppi-02-04-2025.jpg
-│   └── ...
-├── 03-2025/         # Pasta para março de 2025
-│   ├── ppi-28-03-2025.jpg
-│   ├── ppi-30-03-2025.jpg
-│   └── ...
-└── ...              # Uma pasta para cada mês
-```
-
-Essa organização facilita o gerenciamento de grandes volumes de imagens ao longo do tempo.
+* **Imagens:** Salvas em `data/images/MM-YYYY/ppi-DD-MM-YYYY.jpg`.
+* **Relatório CSV:** Salvo em `data/analise_paralela_ocr_YYYYMMDD_HHMMSS.csv`. Contém colunas como:
+    * `nome_arquivo`, `pasta_pai`, `data_extraida_arquivo`, `mes_pasta`, `ano_pasta`
+    * `tamanho_bytes`, `largura_px`, `altura_px`, `modo_cor`, `formato_imagem`
+    * `texto_easyocr` (texto completo extraído via OCR)
+    * `exif_data_json` (string JSON com todos os dados EXIF encontrados)
+    * `erro_processamento` (indica se houve erro ao processar a imagem específica)
+    * `caminho_completo`
 
 ## Requisitos
 
-- Docker
-- VS Code com extensão Remote - Containers
-- ou Python 3.8+ com pip
+* Python 3.8+
+* Pip (gerenciador de pacotes Python)
+* Bibliotecas Python listadas em `requirements.txt`. Chave incluem:
+    * `requests`
+    * `beautifulsoup4`
+    * `pandas`
+    * `Pillow` (para manipulação de imagem e EXIF)
+    * `numpy`
+    * `easyocr` (para OCR)
+    * `torch`, `torchvision`, `torchaudio` (dependências do `easyocr`)
+* **Importante (EasyOCR):** Na primeira vez que a análise com OCR for executada, a biblioteca `easyocr` pode precisar baixar modelos de linguagem da internet (ex: para português e inglês). Permita a conexão se solicitado.
 
-## Configuração do Ambiente
+*Opcional:*
+* Docker
+* VS Code com extensão Remote - Containers (para usar o ambiente pré-configurado em `.devcontainer/`)
 
-### Usando VS Code + Docker (recomendado)
+## Configuração do Ambiente (venv)
 
-1. Instale o Docker na sua máquina.
-2. Instale o VS Code.
-3. Instale a extensão "Remote - Containers" no VS Code.
-4. Clone este repositório.
-5. Abra o projeto no VS Code.
-6. Quando solicitado, clique em "Reabrir no Container" ou use o comando `Remote-Containers: Reopen in Container`.
-7. Aguarde o ambiente ser configurado automaticamente.
+1.  Clone este repositório:
+    ```bash
+    git clone <URL_DO_REPOSITORIO>
+    cd Abicom-WebScrapping-Project
+    ```
+2.  Crie um ambiente virtual:
+    ```bash
+    python -m venv venv
+    ```
+3.  Ative o ambiente virtual:
+    * Windows (cmd/powershell): `.\venv\Scripts\activate`
+    * Linux / macOS: `source venv/bin/activate`
+4.  Instale as dependências:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-### Usando venv (sem Docker)
-
-Se preferir não usar Docker, você pode configurar um ambiente virtual Python:
-
-```bash
-# Criar o ambiente virtual
-python -m venv venv
-
-# Ativar o ambiente virtual (Windows)
-venv\Scripts\activate
-
-# Ativar o ambiente virtual (Linux/Mac)
-source venv/bin/activate
-
-# Instalar dependências
-pip install -r requirements.txt
-```
+*(Alternativa: Se usar VS Code com a extensão Remote-Containers, abra a pasta do projeto e selecione "Reabrir no Container" para configurar o ambiente automaticamente via Docker).*
 
 ## Uso
 
-Para executar o scraper com configurações padrão:
+**Importante:** Execute os comandos a partir do diretório raiz do projeto (`Abicom-WebScrapping-Project`).
 
-```bash
-python src/main.py
-```
+1.  **Executar Apenas o Scraper:**
+    ```bash
+    python -m src.main [opções]
+    ```
+    Isso baixará as imagens para `data/images/` conforme as configurações.
+
+2.  **Executar o Scraper e DEPOIS a Análise Completa (com OCR):**
+    ```bash
+    python -m src.main --analyze [opções]
+    ```
+    Após o scraper terminar (ou ser interrompido), a análise será iniciada automaticamente. Um arquivo CSV será gerado em `data/`.
+
+3.  **Executar Apenas a Análise Completa (com OCR) em imagens já baixadas:**
+    ```bash
+    python src/analise_imagens.py
+    ```
+    Isso analisará as imagens no diretório configurado em `src/config.py` (ou o padrão `data/images/`) e gerará o CSV em `data/`.
+
+**Opções de Linha de Comando para `src/main.py`:**
+
+* `--start-page N`: Define a página inicial do scraping (padrão: 1).
+* `--max-pages N`: Define o número máximo de páginas a processar (padrão do `config.py`).
+* `--output-dir /caminho/para/pasta`: Especifica o diretório de saída para as *imagens* (padrão do `config.py`). O CSV da análise será salvo no diretório *pai* deste.
+* `--verbose`: Habilita logs mais detalhados no console e no `scraper.log`.
+* `--analyze`: Ativa a execução da análise detalhada (com OCR) após o scraping.
 
 ## Configurações
 
-O scraper possui algumas configurações que podem ser ajustadas no arquivo `src/config.py`:
+Ajustes podem ser feitos no arquivo `src/config.py`:
 
-- `ORGANIZE_BY_MONTH`: Se `True` (padrão), organiza as imagens em pastas mensais. Se `False`, salva todas as imagens no diretório raiz.
-- `MAX_PAGES`: Número máximo de páginas a processar.
-- `SLEEP_BETWEEN_REQUESTS`: Tempo de espera entre requisições (em segundos).
-- `SLEEP_BETWEEN_PAGES`: Tempo de espera entre páginas (em segundos).
-- `OUTPUT_DIR`: Diretório de saída para as imagens.
+* `BASE_URL`: URL da categoria a ser raspada.
+* `OUTPUT_DIR`: Diretório base onde a pasta `images` será criada.
+* `ORGANIZE_BY_MONTH`: `True` (padrão) para criar subpastas `MM-YYYY` dentro de `images`, `False` para salvar tudo direto em `images`.
+* `MAX_PAGES`: Número padrão de páginas a processar se não especificado na linha de comando.
+* `SLEEP_BETWEEN_REQUESTS`, `SLEEP_BETWEEN_PAGES`: Pausas para evitar sobrecarga no servidor.
+* *(Avançado):* Idiomas do EasyOCR (`['pt', 'en']`) poderiam ser movidos para cá.
 
-### Opções de linha de comando
+## Notas e Limitações
 
-```bash
-python src/main.py --start-page 1 --max-pages 10 --output-dir ./data/images --verbose
-```
-
-- `--start-page`: Página inicial para o scraping (padrão: 1)
-- `--max-pages`: Número máximo de páginas para processar (padrão: 10)
-- `--output-dir`: Diretório de saída para as imagens (padrão: ./data/images)
-- `--verbose`: Habilita logging detalhado
-
-## Arquitetura do Projeto
-
-O projeto segue os princípios SOLID:
-
-1. **Single Responsibility Principle**: Cada classe tem uma única responsabilidade.
-   - `HttpClient`: Gerencia requisições HTTP
-   - `ImageService`: Gerencia operações relacionadas a imagens
-   - `BaseScraper`: Define o fluxo genérico de scraping
-
-2. **Open/Closed Principle**: As classes são abertas para extensão, fechadas para modificação.
-   - `BaseScraper` é uma classe abstrata que pode ser estendida para diferentes sites
-   - `AbicomScraper` estende `BaseScraper` para o site específico
-
-3. **Liskov Substitution Principle**: Objetos de uma superclasse podem ser substituídos por objetos de subclasses.
-   - `AbicomScraper` pode ser usado onde `BaseScraper` é esperado
-
-4. **Interface Segregation Principle**: Interfaces específicas para diferentes necessidades.
-   - Cada serviço expõe apenas os métodos necessários para sua função
-
-5. **Dependency Inversion Principle**: Dependências de alto nível não dependem de implementações de baixo nível.
-   - Injeção de dependência é usada extensivamente (ex: `HttpClient`, `ImageService`)
-
-## Otimizações de Desempenho
-
-O scraper inclui várias otimizações para melhorar a velocidade e eficiência:
-
-1. **Pré-verificação de downloads**: Verifica se uma imagem já foi baixada antes mesmo de acessar a página do post, economizando requisições HTTP.
-
-2. **Indexação inicial**: Ao iniciar, o script faz uma varredura das pastas existentes para criar um índice das imagens já baixadas.
-
-3. **Agrupamento por mês**: Organiza as imagens em pastas mensais, o que não só facilita a organização, mas também melhora a performance de verificação.
-
-4. **Cache de informações**: Mantém um cache de URLs já processadas e resultados de extração de data para evitar operações redundantes.
-
-5. **Relatórios por mês**: Gera relatórios agrupados por mês, facilitando o acompanhamento do progresso.
-
-## Logs
-
-O scraper registra informações detalhadas sobre sua operação em:
-
-- Saída padrão (console)
-- Arquivo `scraper.log` no diretório raiz
-
-## Notas
-
-- O scraper foi projetado para ser educado com o servidor, incluindo pausas entre requisições
-- Ao executar novamente, o scraper evita baixar imagens que já foram obtidas
-- As imagens são salvas com o formato de data do dia atual
+* **Performance do OCR:** A análise com OCR é intensiva em CPU e memória. O uso de paralelismo acelera o processo em máquinas multi-core, mas ainda pode levar tempo para analisar um grande número de imagens.
+* **Precisão do OCR:** A qualidade do texto extraído depende da resolução e clareza da imagem original.
+* **Parsing do Texto OCR:** O script salva o texto *bruto* extraído pelo OCR. Para extrair valores específicos das tabelas contidas nesse texto, é necessária lógica adicional de parsing (ex: usando Expressões Regulares ou bibliotecas de análise de tabelas mais avançadas) a ser aplicada sobre a coluna `texto_easyocr` do CSV gerado.
+* **Ética e Termos de Uso:** Sempre verifique o arquivo `robots.txt
