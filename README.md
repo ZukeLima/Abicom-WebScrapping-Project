@@ -40,6 +40,25 @@ abicom-scraper/
 └── README.md          # Este arquivo
 ```
 
+## Estrutura de Arquivos
+
+O scraper salva as imagens em uma estrutura de diretórios organizada por mês:
+
+```
+data/images/
+├── 04-2025/         # Pasta para abril de 2025
+│   ├── ppi-01-04-2025.jpg
+│   ├── ppi-02-04-2025.jpg
+│   └── ...
+├── 03-2025/         # Pasta para março de 2025
+│   ├── ppi-28-03-2025.jpg
+│   ├── ppi-30-03-2025.jpg
+│   └── ...
+└── ...              # Uma pasta para cada mês
+```
+
+Essa organização facilita o gerenciamento de grandes volumes de imagens ao longo do tempo.
+
 ## Requisitos
 
 - Docker
@@ -126,25 +145,6 @@ O projeto segue os princípios SOLID:
 
 5. **Dependency Inversion Principle**: Dependências de alto nível não dependem de implementações de baixo nível.
    - Injeção de dependência é usada extensivamente (ex: `HttpClient`, `ImageService`)
-
-## Estrutura de Arquivos
-
-O scraper salva as imagens em uma estrutura de diretórios organizada por mês:
-
-```
-data/images/
-├── 04-2025/         # Pasta para abril de 2025
-│   ├── ppi-01-04-2025.jpg
-│   ├── ppi-02-04-2025.jpg
-│   └── ...
-├── 03-2025/         # Pasta para março de 2025
-│   ├── ppi-28-03-2025.jpg
-│   ├── ppi-30-03-2025.jpg
-│   └── ...
-└── ...              # Uma pasta para cada mês
-```
-
-Essa organização facilita o gerenciamento de grandes volumes de imagens ao longo do tempo.
 
 ## Otimizações de Desempenho
 
