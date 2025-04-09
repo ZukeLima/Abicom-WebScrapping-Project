@@ -18,14 +18,16 @@ DOWNLOAD_TIMEOUT = 60  # segundos
 # Configurações de navegação
 SLEEP_BETWEEN_REQUESTS = 1  # segundos
 SLEEP_BETWEEN_PAGES = 2  # segundos
-MAX_PAGES = 2
+MAX_PAGES = 4
 
 # Padrões para identificação de imagens
 IMAGE_EXTENSIONS = ['.jpg', '.jpeg']
 
 # Configurações de arquivos e diretórios
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "images")
-DATE_FORMAT = "dd-MM-yyyy"  # Formato para nomes de arquivos
+DATE_FORMAT = "%d-%m-%Y"  # Formato para nomes de arquivos
+DATE_FORMAT_FOLDER = "%m-%Y"  # Formato para pastas mensais
+ORGANIZE_BY_MONTH = True  # Se True, organiza as imagens em pastas mensais
 
 # Criar diretório de saída se não existir
 os.makedirs(OUTPUT_DIR, exist_ok=True)

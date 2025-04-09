@@ -6,13 +6,16 @@ Este projeto realiza web scraping no site da Abicom para coletar imagens JPG da 
 
 - Varre páginas sequenciais do site usando o formato correto de paginação (`/categoria/ppi/page/N/`).
 - Extrai links para posts individuais de cada página de listagem.
-- **Acessa cada post individualmente e extrai APENAS a primeira imagem JPG de cada post**.
+- **Organiza as imagens por pastas mensais (formato MM-YYYY)** para facilitar a gestão.
+- Verifica de forma eficiente se uma imagem já foi baixada **antes** de acessar a página do post.
+- Acessa cada post individualmente e extrai APENAS a primeira imagem JPG de cada post.
 - Ignora imagens em páginas de listagem, focando apenas em imagens dentro de posts individuais.
 - Filtra imagens que parecem ser elementos de UI (ícones, logos, etc.).
 - Nomeia as imagens usando o padrão `ppi-DD-MM-YYYY.jpg` extraído do nome da página/post.
 - Se o padrão de data não for encontrado no URL, usa o nome do post ou página como identificador.
 - Evita o download de imagens repetidas.
 - Rastreia URLs já visitadas para evitar processamento duplicado.
+- Gera relatórios de downloads por mês.
 - Implementa tratamento de erros para falhas de HTTP, timeout e problemas de arquivo.
 - Utiliza pausas (`time.sleep`) para não sobrecarregar o site.
 
@@ -81,6 +84,16 @@ Para executar o scraper com configurações padrão:
 python src/main.py
 ```
 
+## Configurações
+
+O scraper possui algumas configurações que podem ser ajustadas no arquivo `src/config.py`:
+
+- `ORGANIZE_BY_MONTH`: Se `True` (padrão), organiza as imagens em pastas mensais. Se `False`, salva todas as imagens no diretório raiz.
+- `MAX_PAGES`: Número máximo de páginas a processar.
+- `SLEEP_BETWEEN_REQUESTS`: Tempo de espera entre requisições (em segundos).
+- `SLEEP_BETWEEN_PAGES`: Tempo de espera entre páginas (em segundos).
+- `OUTPUT_DIR`: Diretório de saída para as imagens.
+
 ### Opções de linha de comando
 
 ```bash
@@ -113,6 +126,39 @@ O projeto segue os princípios SOLID:
 
 5. **Dependency Inversion Principle**: Dependências de alto nível não dependem de implementações de baixo nível.
    - Injeção de dependência é usada extensivamente (ex: `HttpClient`, `ImageService`)
+
+## Estrutura de Arquivos
+
+O scraper salva as imagens em uma estrutura de diretórios organizada por mês:
+
+```
+data/images/
+├── 04-2025/         # Pasta para abril de 2025
+│   ├── ppi-01-04-2025.jpg
+│   ├── ppi-02-04-2025.jpg
+│   └── ...
+├── 03-2025/         # Pasta para março de 2025
+│   ├── ppi-28-03-2025.jpg
+│   ├── ppi-30-03-2025.jpg
+│   └── ...
+└── ...              # Uma pasta para cada mês
+```
+
+Essa organização facilita o gerenciamento de grandes volumes de imagens ao longo do tempo.
+
+## Otimizações de Desempenho
+
+O scraper inclui várias otimizações para melhorar a velocidade e eficiência:
+
+1. **Pré-verificação de downloads**: Verifica se uma imagem já foi baixada antes mesmo de acessar a página do post, economizando requisições HTTP.
+
+2. **Indexação inicial**: Ao iniciar, o script faz uma varredura das pastas existentes para criar um índice das imagens já baixadas.
+
+3. **Agrupamento por mês**: Organiza as imagens em pastas mensais, o que não só facilita a organização, mas também melhora a performance de verificação.
+
+4. **Cache de informações**: Mantém um cache de URLs já processadas e resultados de extração de data para evitar operações redundantes.
+
+5. **Relatórios por mês**: Gera relatórios agrupados por mês, facilitando o acompanhamento do progresso.
 
 ## Logs
 

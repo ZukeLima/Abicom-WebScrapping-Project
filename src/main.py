@@ -72,7 +72,8 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
         
     logger.info(f"Iniciando scraper da Abicom (páginas {args.start_page} a {args.start_page + args.max_pages - 1})")
-    logger.info(f"O scraper irá acessar cada post encontrado nas páginas de listagem e extrair imagens JPG")
+    logger.info(f"O scraper irá acessar cada post encontrado e baixar a primeira imagem JPG")
+    logger.info(f"As imagens serão organizadas em pastas mensais (MM-YYYY)")
     
     # Garante que o diretório de saída exista
     os.makedirs(args.output_dir, exist_ok=True)
@@ -82,6 +83,10 @@ def main():
         from src.services.image_service import ImageService
         image_service = ImageService(output_dir=args.output_dir)
         
+        # Pré-indexa as imagens existentes para otimizar a verificação
+        logger.info("Pré-indexando imagens existentes...")
+        image_service.pre_check_monthly_images()
+        
         # Inicializa e executa o scraper
         with AbicomScraper(image_service=image_service) as scraper:
             total_downloads = scraper.run(
@@ -89,7 +94,10 @@ def main():
                 max_pages=args.max_pages
             )
             
-        logger.info(f"Scraping concluído. Total de {total_downloads} imagens baixadas.")
+        if total_downloads > 0:
+            logger.info(f"Scraping concluído. Total de {total_downloads} novas imagens baixadas.")
+        else:
+            logger.info("Scraping concluído. Nenhuma nova imagem baixada.")
         
     except KeyboardInterrupt:
         logger.info("Scraping interrompido pelo usuário.")

@@ -4,7 +4,8 @@ Implementação específica de scraper para o site da Abicom.
 import logging
 import os
 import time
-from typing import List, Optional, Set
+import re
+from typing import List, Optional, Set, Dict
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from src.scrapers.base_scraper import BaseScraper
@@ -38,6 +39,10 @@ class AbicomScraper(BaseScraper):
         super().__init__(base_url, http_client, image_service)
         self.page_pattern = page_pattern
         self.visited_posts: Set[str] = set()  # Para rastrear posts já visitados
+        self.post_info_cache: Dict[str, Dict] = {}  # Cache de informações de posts
+        
+        # Pré-indexar as imagens existentes para otimizar a verificação
+        self.image_service.pre_check_monthly_images()
         
     def build_page_url(self, page_num: int) -> str:
         """
@@ -58,7 +63,64 @@ class AbicomScraper(BaseScraper):
             return f"{self.base_url}page/{page_num}/"
         else:
             return f"{self.base_url}/page/{page_num}/"
-    
+
+    def extract_date_from_post_url(self, post_url: str) -> Optional[tuple]:
+        """
+        Extrai a data de uma URL de post.
+        
+        Args:
+            post_url: URL do post
+            
+        Returns:
+            Optional[tuple]: Tupla (dia, mês, ano) ou None se não encontrar
+        """
+        # Procura pelo padrão "ppi-DD-MM-YYYY" na URL
+        import re
+        pattern = r"ppi-(\d{2})-(\d{2})-(\d{4})"
+        match = re.search(pattern, post_url)
+        
+        if match:
+            day, month, year = match.groups()
+            return (day, month, year)
+            
+        return None
+        
+    def should_download_post(self, post_url: str) -> bool:
+        """
+        Verifica se um post deve ser baixado ou pode ser pulado.
+        
+        Args:
+            post_url: URL do post
+            
+        Returns:
+            bool: True se o post deve ser baixado, False caso contrário
+        """
+        # Verifica se o post já foi visitado
+        if post_url in self.visited_posts:
+            logger.debug(f"Post já visitado: {post_url}")
+            return False
+            
+        # Extrai a data do post para verificar se a imagem já existe
+        date_parts = self.extract_date_from_post_url(post_url)
+        
+        if date_parts:
+            # Cria uma imagem temporária para verificação
+            day, month, year = date_parts
+            dummy_image = Image(
+                url="",
+                source_url=post_url,
+                file_extension=".jpg"  # Extensão padrão para verificação
+            )
+            
+            # Verifica se a imagem já existe
+            if self.image_service.is_already_downloaded(dummy_image):
+                logger.info(f"Imagem do post {post_url} já existe. Pulando...")
+                self.visited_posts.add(post_url)
+                return False
+                
+        # Se chegou aqui, o post deve ser baixado
+        return True
+        
     def extract_post_links(self, page_url: str) -> List[str]:
         """
         Extrai links para posts individuais de uma página de listagem.
@@ -127,7 +189,7 @@ class AbicomScraper(BaseScraper):
             logger.debug(f"Link {i+1}: {link}")
             
         return post_links
-    
+        
     def extract_images_from_post(self, post_url: str) -> List[Image]:
         """
         Extrai apenas a primeira imagem de um post individual.
@@ -224,7 +286,7 @@ class AbicomScraper(BaseScraper):
         # Se não encontrou nenhuma imagem válida
         logger.info(f"Nenhuma imagem válida encontrada no post {post_url}")
         return []
-        
+
     def extract_images_from_page(self, page_url: str) -> List[Image]:
         """
         Extrai imagens dos posts de uma página de listagem.
@@ -244,18 +306,28 @@ class AbicomScraper(BaseScraper):
             logger.warning(f"Nenhum link de post encontrado na página {page_url}")
             return []
             
-        logger.info(f"Processando {len(post_links)} posts da página {page_url}")
+        logger.info(f"Encontrados {len(post_links)} posts na página {page_url}")
         
-        # 2. Para cada post, extrai a primeira imagem
-        for i, post_url in enumerate(post_links):
+        # 2. Filtra apenas os posts que precisam ser processados
+        posts_to_process = []
+        for post_url in post_links:
+            if self.should_download_post(post_url):
+                posts_to_process.append(post_url)
+            else:
+                logger.debug(f"Post já processado anteriormente: {post_url}")
+                
+        logger.info(f"De {len(post_links)} posts, {len(posts_to_process)} precisam ser processados")
+        
+        # 3. Para cada post não processado, extrai a primeira imagem
+        for i, post_url in enumerate(posts_to_process):
             # Extrai imagens do post (apenas a primeira)
             post_images = self.extract_images_from_post(post_url)
             
             if post_images:
                 all_images.extend(post_images)
-                logger.debug(f"Adicionada imagem do post {i+1}/{len(post_links)}: {post_url}")
+                logger.debug(f"Adicionada imagem do post {i+1}/{len(posts_to_process)}: {post_url}")
             else:
-                logger.debug(f"Nenhuma imagem encontrada no post {i+1}/{len(post_links)}: {post_url}")
+                logger.debug(f"Nenhuma imagem encontrada no post {i+1}/{len(posts_to_process)}: {post_url}")
             
             # Pausa entre requisições
             if SLEEP_BETWEEN_REQUESTS > 0:
@@ -264,8 +336,8 @@ class AbicomScraper(BaseScraper):
         # Agora o log será mais preciso - inclui apenas a primeira imagem de cada post
         total_imagens = len(all_images)
         if total_imagens > 0:
-            logger.info(f"Coletadas {total_imagens} imagens dos {len(post_links)} posts da página {page_url}")
+            logger.info(f"Coletadas {total_imagens} imagens dos {len(posts_to_process)} posts processados da página {page_url}")
         else:
-            logger.warning(f"Nenhuma imagem coletada dos {len(post_links)} posts da página {page_url}")
+            logger.warning(f"Nenhuma imagem coletada dos {len(posts_to_process)} posts processados da página {page_url}")
             
         return all_images
