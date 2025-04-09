@@ -1,15 +1,34 @@
 # Abicom Web Scraper
 
-Este projeto realiza web scraping no site da Abicom para coletar dados da categoria PPI.
+Este projeto realiza web scraping no site da Abicom para coletar imagens JPG da categoria PPI.
+
+## Funcionalidades
+
+- Varre páginas sequenciais do site (usando o padrão `/page/N/`).
+- Encontra imagens (`<img>`) com links (`src`) terminando em `.jpg`.
+- Baixa as imagens para uma pasta local.
+- Nomeia as imagens no padrão `ppi-DD/MM/YYYY.jpg`.
+- Evita o download de imagens repetidas (verifica existência pelo nome do arquivo).
+- Implementa tratamento de erros para falhas de HTTP, timeout e problemas de arquivo.
+- Utiliza pausas (`time.sleep`) para não sobrecarregar o site.
 
 ## Estrutura do Projeto
 
 ```
 abicom-scraper/
 ├── .devcontainer/     # Configuração do VS Code + Docker
+│   ├── devcontainer.json
+│   └── Dockerfile
 ├── .vscode/           # Configurações do VS Code
-├── src/               # Código-fonte do projeto
-├── data/              # Dados extraídos (criado automaticamente)
+│   └── settings.json
+├── src/
+│   ├── config.py      # Configurações globais
+│   ├── main.py        # Ponto de entrada
+│   ├── models/        # Modelos de dados
+│   ├── services/      # Serviços (HTTP, download, etc.)
+│   ├── utils/         # Utilitários
+│   └── scrapers/      # Implementações de scrapers
+├── data/images/       # Pasta para imagens baixadas (criada automaticamente)
 ├── requirements.txt   # Dependências do projeto
 └── README.md          # Este arquivo
 ```
@@ -18,6 +37,7 @@ abicom-scraper/
 
 - Docker
 - VS Code com extensão Remote - Containers
+- ou Python 3.8+ com pip
 
 ## Configuração do Ambiente
 
@@ -51,28 +71,54 @@ pip install -r requirements.txt
 
 ## Uso
 
-Para executar o scraper:
+Para executar o scraper com configurações padrão:
 
 ```bash
-# Dentro do container Docker ou com venv ativo
-python src/scraper.py
+python src/main.py
 ```
 
-Por padrão, o script irá:
-1. Acessar até 3 páginas da categoria PPI da Abicom
-2. Extrair os links dos artigos encontrados
-3. Acessar cada artigo para extrair seus dados
-4. Salvar os resultados em um arquivo CSV na pasta `data/`
+### Opções de linha de comando
 
-## Personalização
+```bash
+python src/main.py --start-page 1 --max-pages 10 --output-dir ./data/images --verbose
+```
 
-Você pode modificar o comportamento do scraper editando os parâmetros no arquivo `src/scraper.py`:
+- `--start-page`: Página inicial para o scraping (padrão: 1)
+- `--max-pages`: Número máximo de páginas para processar (padrão: 10)
+- `--output-dir`: Diretório de saída para as imagens (padrão: ./data/images)
+- `--verbose`: Habilita logging detalhado
 
-- Altere `max_pages` para processar mais ou menos páginas
-- Modifique a classe `AbicomScraper` para extrair diferentes informações
+## Arquitetura do Projeto
+
+O projeto segue os princípios SOLID:
+
+1. **Single Responsibility Principle**: Cada classe tem uma única responsabilidade.
+   - `HttpClient`: Gerencia requisições HTTP
+   - `ImageService`: Gerencia operações relacionadas a imagens
+   - `BaseScraper`: Define o fluxo genérico de scraping
+
+2. **Open/Closed Principle**: As classes são abertas para extensão, fechadas para modificação.
+   - `BaseScraper` é uma classe abstrata que pode ser estendida para diferentes sites
+   - `AbicomScraper` estende `BaseScraper` para o site específico
+
+3. **Liskov Substitution Principle**: Objetos de uma superclasse podem ser substituídos por objetos de subclasses.
+   - `AbicomScraper` pode ser usado onde `BaseScraper` é esperado
+
+4. **Interface Segregation Principle**: Interfaces específicas para diferentes necessidades.
+   - Cada serviço expõe apenas os métodos necessários para sua função
+
+5. **Dependency Inversion Principle**: Dependências de alto nível não dependem de implementações de baixo nível.
+   - Injeção de dependência é usada extensivamente (ex: `HttpClient`, `ImageService`)
+
+## Logs
+
+O scraper registra informações detalhadas sobre sua operação em:
+
+- Saída padrão (console)
+- Arquivo `scraper.log` no diretório raiz
 
 ## Notas
 
-- O scraper inclui pausas (sleeps) entre requisições para evitar sobrecarga no servidor
-- Os dados são salvos em formato CSV com timestamp para evitar sobrescrever arquivos anteriores
-- Use este scraper de forma responsável e em conformidade com os termos de uso do site alvo
+- O scraper foi projetado para ser educado com o servidor, incluindo pausas entre requisições
+- Ao executar novamente, o scraper evita baixar imagens que já foram obtidas
+- As imagens são salvas com o formato de data do dia atual
