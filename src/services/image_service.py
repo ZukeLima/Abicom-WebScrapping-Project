@@ -114,6 +114,12 @@ class ImageService:
             logger.info(f"Imagem já baixada: {image.url}")
             return False
             
+        # Verifica se a URL da fonte é uma página de listagem
+        ignore_patterns = ['/categoria/', '/category/', '/tag/', '/author/', '/page/']
+        if any(pattern in image.source_url for pattern in ignore_patterns) and 'abicom.com.br/categoria/ppi' in image.source_url:
+            logger.info(f"Ignorando imagem de página de listagem: {image.url} de {image.source_url}")
+            return False
+            
         # Gera o caminho de destino
         output_path = self.get_image_path(image)
         

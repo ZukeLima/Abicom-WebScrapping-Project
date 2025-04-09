@@ -52,11 +52,12 @@ class AbicomScraper(BaseScraper):
         if page_num <= 1:
             return self.base_url
             
-        # Aplica o número da página ao padrão
-        page_path = self.page_pattern.format(page_num=page_num)
-        
-        # Constrói a URL final
-        return urljoin(self.base_url, page_path)
+        # Corrigindo para usar o formato correto de URL
+        # Formato correto: https://abicom.com.br/categoria/ppi/page/2/
+        if self.base_url.endswith('/'):
+            return f"{self.base_url}page/{page_num}/"
+        else:
+            return f"{self.base_url}/page/{page_num}/"
     
     def extract_post_links(self, page_url: str) -> List[str]:
         """
@@ -79,70 +80,59 @@ class AbicomScraper(BaseScraper):
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Procura por links para posts
-        # Ajuste os seletores conforme a estrutura real do site
         post_links = []
         
-        # A estrutura comum para posts é ter um container de artigo com links
-        # Podemos tentar diversos seletores comuns
+        # Adaptação específica para o site da Abicom
+        # Tenta localizar o container principal de posts
+        main_container = soup.find('main', id='main') or soup.find('div', class_='content-area') or soup
         
-        # Tentativa 1: Procurar artigos ou posts
-        articles = soup.find_all(['article', 'div'], class_=['post', 'article', 'entry'])
+        # Localizando possivelmente artigos ou posts
+        articles = main_container.find_all(['article', 'div'], class_=['post', 'article', 'entry'])
         
-        if not articles:
-            # Tentativa 2: Procurar qualquer div com título que contenha link
-            articles = soup.find_all('div', class_=['entry', 'post-content', 'content'])
-        
-        # Se ainda não encontrou, tenta uma busca mais ampla
-        if not articles:
-            # Tentativa 3: Procurar cabeçalhos com links
-            headers = soup.find_all(['h1', 'h2', 'h3'], class_=['entry-title', 'post-title'])
-            for header in headers:
-                link = header.find('a', href=True)
-                if link and link['href']:
-                    post_links.append(link['href'])
-        else:
-            # Extrai links dos artigos encontrados
+        if articles:
             for article in articles:
-                # Tenta encontrar o link no título primeiro
-                title = article.find(['h1', 'h2', 'h3'], class_=['entry-title', 'post-title'])
-                if title:
-                    link = title.find('a', href=True)
+                # Procura o link no cabeçalho ou em elementos com classe relacionada a título
+                header = article.find(['h1', 'h2', 'h3', 'h4'], class_=['entry-title', 'post-title'])
+                if header:
+                    link = header.find('a', href=True)
                     if link and link['href']:
                         post_links.append(link['href'])
                 else:
-                    # Se não encontrou no título, procura qualquer link no artigo
+                    # Se não encontrou no cabeçalho, procura em qualquer link que pareça ser o principal
                     links = article.find_all('a', href=True)
                     for link in links:
-                        # Ignora links de menu, categorias, etc. (normalmente são curtos ou contêm palavras específicas)
                         href = link['href']
-                        ignore_keywords = ['category', 'tag', 'author', 'page', 'comment', '#']
-                        if not any(keyword in href.lower() for keyword in ignore_keywords) and len(href) > 15:
+                        # Filtra links que parecem ser de categorias, tags, etc.
+                        if not any(x in href for x in ['/categoria/', '/category/', '/tag/', '/author/', '/page/']):
                             post_links.append(href)
+                            break  # Pega apenas o primeiro link relevante por artigo
         
-        # Se ainda não encontrou, tenta um método mais genérico
+        # Se não encontrou nada usando a abordagem acima, tenta uma abordagem mais genérica
         if not post_links:
-            # Procura todos os links
-            all_links = soup.find_all('a', href=True)
+            # Procura todos os links que sejam títulos ou que estão em elementos com classe de título
+            title_links = soup.find_all('a', class_=['entry-title', 'post-title']) or soup.find_all('a', {'rel': 'bookmark'})
             
-            # Filtra os links prováveis de serem posts (geralmente têm data ou ID no URL)
+            for link in title_links:
+                if link.get('href'):
+                    post_links.append(link['href'])
+        
+        # Se ainda não encontrou nada, tenta encontrar quaisquer links que pareçam ser de posts
+        if not post_links:
+            all_links = soup.find_all('a', href=True)
+            base_url = page_url.split('/categoria/')[0] if '/categoria/' in page_url else page_url.split('/page/')[0]
+            
             for link in all_links:
                 href = link['href']
-                # Verifica se o link parece ser um post 
-                base_host = self.base_url.split('//')[1].split('/')[0]  # Extrai o domínio base
                 
-                # Corrigindo o erro de "list index out of range"
-                try:
-                    # Dividir a URL e verificar se tem componentes suficientes
-                    parts = href.split('/')
-                    # Verifica se tem pelo menos 3 partes (protocolo, domínio, caminho)
-                    if len(parts) >= 3 and base_host in href and (
-                        '20' in href or  # Contém ano 20xx
-                        (len(parts) > 2 and any(c.isdigit() for c in parts[-2] if len(parts[-2]) > 0))  # Penúltima parte contém dígito
-                    ):
-                        post_links.append(href)
-                except IndexError:
-                    # Ignora URLs malformadas
+                # Ignora links de navegação, categorias, etc.
+                if any(x in href for x in ['/categoria/', '/category/', '/tag/', '/author/', '#']):
                     continue
+                    
+                # Verifica se o link parece ser um post (começa com a base URL do site)
+                if href.startswith(base_url) and href != page_url and '/page/' not in href:
+                    # Verifica se tem texto que sugere ser um título de post
+                    if link.text and len(link.text.strip()) > 10:
+                        post_links.append(href)
         
         # Normaliza os links e remove duplicatas
         normalized_links = []
@@ -152,12 +142,17 @@ class AbicomScraper(BaseScraper):
             # Normaliza a URL
             full_url = normalize_url(link, page_url)
             
-            # Evita duplicatas
-            if full_url not in seen_links:
+            # Evita duplicatas e links para páginas de listagem
+            if full_url not in seen_links and not any(x in full_url for x in ['/page/', '/categoria/', '/category/']):
                 seen_links.add(full_url)
                 normalized_links.append(full_url)
         
         logger.info(f"Encontrados {len(normalized_links)} links de posts na página {page_url}")
+        
+        # Imprime os links encontrados para debugging
+        for i, link in enumerate(normalized_links):
+            logger.debug(f"  Post {i+1}: {link}")
+            
         return normalized_links
     
     def extract_images_from_post(self, post_url: str) -> List[Image]:
@@ -173,6 +168,13 @@ class AbicomScraper(BaseScraper):
         # Verifica se o post já foi visitado
         if post_url in self.visited_posts:
             logger.debug(f"Post já visitado: {post_url}")
+            return []
+            
+        # Verifica se a URL parece ser de uma página de listagem e não de um post individual
+        # Ignoramos páginas de listagem para evitar baixar imagens incorretas
+        ignore_patterns = ['/categoria/', '/category/', '/tag/', '/author/', '/page/']
+        if any(pattern in post_url for pattern in ignore_patterns) and post_url != self.base_url:
+            logger.debug(f"Ignorando URL que parece ser uma página de listagem: {post_url}")
             return []
             
         # Marca o post como visitado
@@ -234,6 +236,12 @@ class AbicomScraper(BaseScraper):
             if extension not in IMAGE_EXTENSIONS:
                 continue
                 
+            # Ignora imagens que parecem ser ícones, logos ou elementos de UI
+            ignore_patterns = ['icon', 'logo', 'avatar', 'banner', 'header', 'footer', 'sidebar', 'thumbnail', 'placeholder']
+            if any(pattern in img_url.lower() for pattern in ignore_patterns):
+                logger.debug(f"Ignorando imagem que parece ser um elemento de UI: {img_url}")
+                continue
+                
             # Cria o objeto Image
             image = Image(
                 url=img_url,
@@ -271,5 +279,5 @@ class AbicomScraper(BaseScraper):
             if SLEEP_BETWEEN_REQUESTS > 0:
                 time.sleep(SLEEP_BETWEEN_REQUESTS)
                 
-        logger.info(f"Total de {len(all_images)} imagens encontradas na página {page_url} e seus posts")
+        logger.info(f"Total de {len(all_images)} imagens encontradas nos posts da página {page_url}")
         return all_images
