@@ -79,91 +79,64 @@ class AbicomScraper(BaseScraper):
         # Analisa o HTML
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Procura por links para posts
+        # Abordagem simplificada e direta para encontrar links da página
         post_links = []
         
-        # Adaptação específica para o site da Abicom
-        # Tenta localizar o container principal de posts
-        main_container = soup.find('main', id='main') or soup.find('div', class_='content-area') or soup
+        # Encontrar todos os links na página
+        all_links = soup.find_all('a', href=True)
         
-        # Localizando possivelmente artigos ou posts
-        articles = main_container.find_all(['article', 'div'], class_=['post', 'article', 'entry'])
-        
-        if articles:
-            for article in articles:
-                # Procura o link no cabeçalho ou em elementos com classe relacionada a título
-                header = article.find(['h1', 'h2', 'h3', 'h4'], class_=['entry-title', 'post-title'])
-                if header:
-                    link = header.find('a', href=True)
-                    if link and link['href']:
-                        post_links.append(link['href'])
-                else:
-                    # Se não encontrou no cabeçalho, procura em qualquer link que pareça ser o principal
-                    links = article.find_all('a', href=True)
-                    for link in links:
-                        href = link['href']
-                        # Filtra links que parecem ser de categorias, tags, etc.
-                        if not any(x in href for x in ['/categoria/', '/category/', '/tag/', '/author/', '/page/']):
-                            post_links.append(href)
-                            break  # Pega apenas o primeiro link relevante por artigo
-        
-        # Se não encontrou nada usando a abordagem acima, tenta uma abordagem mais genérica
-        if not post_links:
-            # Procura todos os links que sejam títulos ou que estão em elementos com classe de título
-            title_links = soup.find_all('a', class_=['entry-title', 'post-title']) or soup.find_all('a', {'rel': 'bookmark'})
+        # Filtrar links que parecem ser posts no site Abicom
+        for link in all_links:
+            href = link.get('href', '')
             
+            # Verificar se o link é um post PPI específico
+            # O formato típico é https://abicom.com.br/ppi/ppi-DD-MM-YYYY/
+            if 'abicom.com.br/ppi/ppi-' in href and href not in post_links:
+                post_links.append(href)
+        
+        # Se não encontrou nenhum link específico com o formato esperado,
+        # tenta uma abordagem mais genérica
+        if not post_links:
+            # Buscar por links dentro de elementos com classe 'entry-title' ou similares
+            title_links = soup.select('.entry-title a, .post-title a')
             for link in title_links:
-                if link.get('href'):
-                    post_links.append(link['href'])
+                href = link.get('href', '')
+                if href and '/categoria/' not in href and '/page/' not in href:
+                    post_links.append(href)
         
-        # Se ainda não encontrou nada, tenta encontrar quaisquer links que pareçam ser de posts
+        # Se ainda não encontrou, procurar links que parecem ser posts
         if not post_links:
-            all_links = soup.find_all('a', href=True)
-            base_url = page_url.split('/categoria/')[0] if '/categoria/' in page_url else page_url.split('/page/')[0]
-            
             for link in all_links:
-                href = link['href']
-                
-                # Ignora links de navegação, categorias, etc.
-                if any(x in href for x in ['/categoria/', '/category/', '/tag/', '/author/', '#']):
-                    continue
-                    
-                # Verifica se o link parece ser um post (começa com a base URL do site)
-                if href.startswith(base_url) and href != page_url and '/page/' not in href:
-                    # Verifica se tem texto que sugere ser um título de post
-                    if link.text and len(link.text.strip()) > 10:
-                        post_links.append(href)
+                href = link.get('href', '')
+                # Filtrar links que parecem ser posts e não são navegação
+                if (href.startswith(page_url.split('/categoria/')[0]) and 
+                    '/categoria/' not in href and 
+                    '/page/' not in href and
+                    '/tag/' not in href and
+                    len(href) > len(page_url) and
+                    href != page_url):
+                    post_links.append(href)
         
-        # Normaliza os links e remove duplicatas
-        normalized_links = []
-        seen_links = set()
+        # Normaliza e remove duplicados
+        post_links = list(dict.fromkeys(post_links))
         
-        for link in post_links:
-            # Normaliza a URL
-            full_url = normalize_url(link, page_url)
+        logger.info(f"Encontrados {len(post_links)} links de posts na página {page_url}")
+        
+        # Log detalhado dos links encontrados
+        for i, link in enumerate(post_links):
+            logger.debug(f"Link {i+1}: {link}")
             
-            # Evita duplicatas e links para páginas de listagem
-            if full_url not in seen_links and not any(x in full_url for x in ['/page/', '/categoria/', '/category/']):
-                seen_links.add(full_url)
-                normalized_links.append(full_url)
-        
-        logger.info(f"Encontrados {len(normalized_links)} links de posts na página {page_url}")
-        
-        # Imprime os links encontrados para debugging
-        for i, link in enumerate(normalized_links):
-            logger.debug(f"  Post {i+1}: {link}")
-            
-        return normalized_links
+        return post_links
     
     def extract_images_from_post(self, post_url: str) -> List[Image]:
         """
-        Extrai imagens de um post individual.
+        Extrai apenas a primeira imagem de um post individual.
         
         Args:
             post_url: URL do post
             
         Returns:
-            List[Image]: Lista de objetos Image encontrados
+            List[Image]: Lista contendo apenas a primeira imagem encontrada, ou lista vazia se nenhuma for encontrada
         """
         # Verifica se o post já foi visitado
         if post_url in self.visited_posts:
@@ -171,7 +144,6 @@ class AbicomScraper(BaseScraper):
             return []
             
         # Verifica se a URL parece ser de uma página de listagem e não de um post individual
-        # Ignoramos páginas de listagem para evitar baixar imagens incorretas
         ignore_patterns = ['/categoria/', '/category/', '/tag/', '/author/', '/page/']
         if any(pattern in post_url for pattern in ignore_patterns) and post_url != self.base_url:
             logger.debug(f"Ignorando URL que parece ser uma página de listagem: {post_url}")
@@ -193,7 +165,6 @@ class AbicomScraper(BaseScraper):
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Encontra o conteúdo principal do post
-        # Geralmente o conteúdo está em uma div com classe específica
         content_selectors = [
             ('div', 'entry-content'),
             ('div', 'post-content'),
@@ -219,8 +190,7 @@ class AbicomScraper(BaseScraper):
         # Encontra todas as tags de imagem no conteúdo
         img_tags = content.find_all('img')
         
-        images = []
-        
+        # Procura pela primeira imagem JPG válida
         for img in img_tags:
             # Obtém a URL da imagem
             img_url = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
@@ -239,45 +209,63 @@ class AbicomScraper(BaseScraper):
             # Ignora imagens que parecem ser ícones, logos ou elementos de UI
             ignore_patterns = ['icon', 'logo', 'avatar', 'banner', 'header', 'footer', 'sidebar', 'thumbnail', 'placeholder']
             if any(pattern in img_url.lower() for pattern in ignore_patterns):
-                logger.debug(f"Ignorando imagem que parece ser um elemento de UI: {img_url}")
                 continue
                 
-            # Cria o objeto Image
+            # Encontramos a primeira imagem válida, criamos o objeto e retornamos
             image = Image(
                 url=img_url,
                 source_url=post_url,
                 file_extension=extension
             )
             
-            images.append(image)
+            logger.info(f"Encontrada 1 imagem no post {post_url}")
+            return [image]  # Retorna apenas a primeira imagem
             
-        logger.info(f"Encontradas {len(images)} imagens no post {post_url}")
-        return images
+        # Se não encontrou nenhuma imagem válida
+        logger.info(f"Nenhuma imagem válida encontrada no post {post_url}")
+        return []
         
     def extract_images_from_page(self, page_url: str) -> List[Image]:
         """
-        Extrai imagens de uma página de listagem e seus posts.
+        Extrai imagens dos posts de uma página de listagem.
         
         Args:
             page_url: URL da página de listagem
             
         Returns:
-            List[Image]: Lista de objetos Image encontrados
+            List[Image]: Lista de objetos Image encontrados (apenas a primeira imagem de cada post)
         """
         all_images = []
         
         # 1. Extrai links para posts da página de listagem
         post_links = self.extract_post_links(page_url)
         
-        # 2. Para cada post, extrai as imagens
-        for post_url in post_links:
-            # Extrai imagens do post
+        if not post_links:
+            logger.warning(f"Nenhum link de post encontrado na página {page_url}")
+            return []
+            
+        logger.info(f"Processando {len(post_links)} posts da página {page_url}")
+        
+        # 2. Para cada post, extrai a primeira imagem
+        for i, post_url in enumerate(post_links):
+            # Extrai imagens do post (apenas a primeira)
             post_images = self.extract_images_from_post(post_url)
-            all_images.extend(post_images)
+            
+            if post_images:
+                all_images.extend(post_images)
+                logger.debug(f"Adicionada imagem do post {i+1}/{len(post_links)}: {post_url}")
+            else:
+                logger.debug(f"Nenhuma imagem encontrada no post {i+1}/{len(post_links)}: {post_url}")
             
             # Pausa entre requisições
             if SLEEP_BETWEEN_REQUESTS > 0:
                 time.sleep(SLEEP_BETWEEN_REQUESTS)
                 
-        logger.info(f"Total de {len(all_images)} imagens encontradas nos posts da página {page_url}")
+        # Agora o log será mais preciso - inclui apenas a primeira imagem de cada post
+        total_imagens = len(all_images)
+        if total_imagens > 0:
+            logger.info(f"Coletadas {total_imagens} imagens dos {len(post_links)} posts da página {page_url}")
+        else:
+            logger.warning(f"Nenhuma imagem coletada dos {len(post_links)} posts da página {page_url}")
+            
         return all_images

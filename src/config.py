@@ -19,7 +19,6 @@ DOWNLOAD_TIMEOUT = 60  # segundos
 SLEEP_BETWEEN_REQUESTS = 1  # segundos
 SLEEP_BETWEEN_PAGES = 2  # segundos
 MAX_PAGES = 2
-MAX_POST_DEPTH = 3
 
 # Padrões para identificação de imagens
 IMAGE_EXTENSIONS = ['.jpg', '.jpeg']
