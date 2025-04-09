@@ -127,10 +127,22 @@ class AbicomScraper(BaseScraper):
             # Filtra os links prováveis de serem posts (geralmente têm data ou ID no URL)
             for link in all_links:
                 href = link['href']
-                # Verifica se o link parece ser um post (tem a URL base e contém /yyyy/ ou ID numérico)
+                # Verifica se o link parece ser um post 
                 base_host = self.base_url.split('//')[1].split('/')[0]  # Extrai o domínio base
-                if base_host in href and ('20' in href or any(c.isdigit() for c in href.split('/')[-2])):
-                    post_links.append(href)
+                
+                # Corrigindo o erro de "list index out of range"
+                try:
+                    # Dividir a URL e verificar se tem componentes suficientes
+                    parts = href.split('/')
+                    # Verifica se tem pelo menos 3 partes (protocolo, domínio, caminho)
+                    if len(parts) >= 3 and base_host in href and (
+                        '20' in href or  # Contém ano 20xx
+                        (len(parts) > 2 and any(c.isdigit() for c in parts[-2] if len(parts[-2]) > 0))  # Penúltima parte contém dígito
+                    ):
+                        post_links.append(href)
+                except IndexError:
+                    # Ignora URLs malformadas
+                    continue
         
         # Normaliza os links e remove duplicatas
         normalized_links = []

@@ -95,9 +95,29 @@ class Downloader:
                 logger.debug(f"Imagem já baixada: {image.url}")
                 continue
                 
-            # Gera o nome do arquivo
-            today_str = image.found_date.strftime('%d-%m-%Y')
-            filename = f"ppi-{today_str}{image.file_extension}"
+            # Extrai o nome da página da fonte
+            import re
+            pattern = r"ppi-(\d{2}-\d{2}-\d{4})"
+            match = re.search(pattern, image.source_url)
+            
+            if match:
+                # Se encontrou o padrão, usa-o para o nome do arquivo
+                date_str = match.group(1)
+                filename = f"ppi-{date_str}{image.file_extension}"
+            else:
+                # Tenta extrair a última parte significativa da URL
+                path_parts = image.source_url.rstrip('/').split('/')
+                
+                # Se tem pelo menos uma parte, usa a última
+                if path_parts and path_parts[-1]:
+                    part = path_parts[-1]
+                    # Remove extensões comuns de páginas web
+                    part = re.sub(r'\.(html|php|asp|jsp)$', '', part)
+                    filename = f"ppi-{part}{image.file_extension}"
+                else:
+                    # Usa a data do objeto se não conseguir extrair o nome
+                    date_str = image.found_date.strftime('%d-%m-%Y')
+                    filename = f"ppi-{date_str}{image.file_extension}"
             
             # Baixa a imagem
             if self.download_file(image.url, filename):

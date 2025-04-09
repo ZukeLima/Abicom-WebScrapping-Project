@@ -32,7 +32,7 @@ class ImageService:
         
     def get_image_path(self, image: Image) -> str:
         """
-        Gera o caminho para salvar a imagem baseado na data atual.
+        Gera o caminho para salvar a imagem baseado no nome da página de origem.
         
         Args:
             image: Objeto de imagem
@@ -40,8 +40,44 @@ class ImageService:
         Returns:
             str: Caminho completo do arquivo
         """
-        today = datetime.now()
-        filename = f"ppi-{today.strftime('%d-%m-%Y')}{image.file_extension}"
+        # Extrai o padrão "ppi-DD-MM-YYYY" da URL, se presente
+        source_url = image.source_url
+        filename = None
+        
+        # Tenta encontrar o padrão "ppi-DD-MM-YYYY" na URL
+        import re
+        pattern = r"ppi-(\d{2}-\d{2}-\d{4})"
+        match = re.search(pattern, source_url)
+        
+        if match:
+            # Se encontrou o padrão, usa-o para o nome do arquivo
+            date_str = match.group(1)
+            filename = f"ppi-{date_str}{image.file_extension}"
+        else:
+            # Se não encontrou, tenta extrair a última parte significativa da URL
+            path_parts = source_url.rstrip('/').split('/')
+            
+            # Encontra a parte mais específica que parece ser o nome do post
+            for part in reversed(path_parts):
+                if part and part not in ['www', 'ppi', 'categoria', 'category']:
+                    # Remove extensões comuns de páginas web
+                    part = re.sub(r'\.(html|php|asp|jsp)$', '', part)
+                    # Se a parte começa com "ppi-", usa-a diretamente
+                    if part.startswith('ppi-'):
+                        filename = f"{part}{image.file_extension}"
+                        break
+                    # Caso contrário, adiciona o prefixo "ppi-"
+                    else:
+                        # Limita o tamanho da parte para evitar nomes muito longos
+                        part = part[:50]
+                        filename = f"ppi-{part}{image.file_extension}"
+                        break
+        
+        # Se não conseguiu extrair um nome da URL, usa a data atual
+        if not filename:
+            today = datetime.now()
+            filename = f"ppi-{today.strftime('%d-%m-%Y')}{image.file_extension}"
+            
         return os.path.join(self.output_dir, filename)
     
     def is_already_downloaded(self, url: str) -> bool:
@@ -58,16 +94,10 @@ class ImageService:
         if url in self.downloaded_urls:
             return True
             
-        # Verifica se existe no sistema de arquivos
-        date_format = "%d-%m-%Y"
-        today = datetime.now()
-        today_str = today.strftime(date_format)
-        
-        # Gera o caminho esperado para a imagem
-        expected_filename = f"ppi-{today_str}{get_url_extension(url)}"
-        expected_path = os.path.join(self.output_dir, expected_filename)
-        
-        return file_exists(expected_path)
+        # Como o nome do arquivo agora é baseado na URL da página e não na data atual,
+        # não é mais possível verificar diretamente pelo nome esperado.
+        # Verificamos apenas pelo registro em memória.
+        return False
     
     def download_image(self, image: Image) -> bool:
         """
