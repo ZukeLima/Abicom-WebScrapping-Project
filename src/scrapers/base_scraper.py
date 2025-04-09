@@ -80,7 +80,7 @@ class BaseScraper(abc.ABC):
         # Marca a URL como visitada
         self.visited_urls.add(page_url)
         
-        # Extrai imagens da página
+        # Extrai imagens da página e seus posts vinculados
         images = self.extract_images_from_page(page_url)
         
         # Pausa entre requisições

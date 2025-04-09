@@ -72,13 +72,18 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
         
     logger.info(f"Iniciando scraper da Abicom (páginas {args.start_page} a {args.start_page + args.max_pages - 1})")
+    logger.info(f"O scraper irá acessar cada post encontrado nas páginas de listagem e extrair imagens JPG")
     
     # Garante que o diretório de saída exista
     os.makedirs(args.output_dir, exist_ok=True)
     
     try:
+        # Cria uma instância do serviço de imagens com o diretório de saída
+        from src.services.image_service import ImageService
+        image_service = ImageService(output_dir=args.output_dir)
+        
         # Inicializa e executa o scraper
-        with AbicomScraper() as scraper:
+        with AbicomScraper(image_service=image_service) as scraper:
             total_downloads = scraper.run(
                 start_page=args.start_page,
                 max_pages=args.max_pages

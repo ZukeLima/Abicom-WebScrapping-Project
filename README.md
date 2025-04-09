@@ -5,10 +5,13 @@ Este projeto realiza web scraping no site da Abicom para coletar imagens JPG da 
 ## Funcionalidades
 
 - Varre páginas sequenciais do site (usando o padrão `/page/N/`).
+- Extrai links para posts individuais de cada página de listagem.
+- **Acessa cada post individualmente para extrair suas imagens.**
 - Encontra imagens (`<img>`) com links (`src`) terminando em `.jpg`.
 - Baixa as imagens para uma pasta local.
 - Nomeia as imagens no padrão `ppi-DD/MM/YYYY.jpg`.
 - Evita o download de imagens repetidas (verifica existência pelo nome do arquivo).
+- Rastreia URLs já visitadas para evitar processamento duplicado.
 - Implementa tratamento de erros para falhas de HTTP, timeout e problemas de arquivo.
 - Utiliza pausas (`time.sleep`) para não sobrecarregar o site.
 
