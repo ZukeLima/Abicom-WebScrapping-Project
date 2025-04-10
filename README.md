@@ -1,161 +1,142 @@
-# Abicom Web Scraper & Image Analyzer
+# Abicom Web Scraper & Advanced Image Analyzer
 
-![Tenor GIF](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)
+![Demonstração](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)
 
-Este projeto combina duas funcionalidades principais:
-1.  **Web Scraping:** Coleta imagens JPG da categoria PPI do site da Abicom de forma eficiente e organizada.
-2.  **Análise de Imagens:** Processa as imagens baixadas para extrair metadados, propriedades da imagem, dados EXIF e **conteúdo textual usando OCR**, salvando os resultados em um arquivo CSV detalhado. A análise utiliza processamento paralelo para melhor performance.
+## Visão Geral
 
-**Desenvolvido por:** Lucas Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
+Este projeto automatiza completamente o processo de coleta e extração de dados de relatórios diários de Preço de Paridade de Importação (PPI) de combustíveis, publicados como imagens pela Abicom em seu site (`https://abicom.com.br/categoria/ppi/`). Ele supera os desafios da extração manual, transformando dados visuais complexos em informações estruturadas e prontas para análise.
+
+O pipeline consiste em duas etapas principais:
+1.  **Web Scraping:** Coleta eficiente das imagens de relatório do site.
+2.  **Análise de Imagem Avançada:** Processamento paralelo das imagens para extrair metadados, propriedades e, crucialmente, dados tabulares específicos usando OCR e análise de layout.
+
+**Desenvolvido por:** Zuke Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
 
 ---
 
-## Funcionalidades
+## ✨ Funcionalidades Principais
 
-### Scraping (`src/main.py`)
+### Web Scraping (`src/main.py` & Módulos)
 
-* Varre páginas sequenciais da categoria PPI da Abicom (`/categoria/ppi/page/N/`).
-* Extrai links para posts individuais de cada página de listagem.
-* **Organiza as imagens por pastas mensais** (formato `MM-YYYY`) dentro de `data/images/` (configurável).
-* Verifica de forma eficiente se uma imagem já foi baixada **antes** de acessar a página do post, evitando downloads repetidos e requisições desnecessárias.
-* Acessa cada post relevante e extrai **apenas a primeira imagem JPG** encontrada no conteúdo principal.
-* Ignora imagens em páginas de listagem e filtra elementos comuns de UI (ícones, logos, etc.).
-* Nomeia as imagens usando o padrão `ppi-DD-MM-YYYY.jpg`, extraindo a data da URL do post sempre que possível.
-* Implementa tratamento de erros HTTP e pausas (`time.sleep`) para não sobrecarregar o site.
+* **Coleta Focada:** Navega pela paginação da categoria PPI da Abicom, identificando e baixando apenas a imagem de relatório principal (`.jpg`/`.jpeg`) de cada post diário.
+* **Eficiência:** Utiliza um `ImageService` que pré-indexa arquivos já baixados para **evitar downloads duplicados**, economizando tempo e banda.
+* **Organização:** Salva as imagens em uma estrutura lógica de pastas por mês e ano (`data/images/MM-YYYY`) com nomes padronizados (`ppi-DD-MM-YYYY.jpg`).
+* **Robustez:** Emprega um `HttpClient` customizado com `requests.Session`, retentativas automáticas para erros de rede/timeout e headers apropriados.
+* **Cortesia:** Inclui pausas configuráveis (`time.sleep`) entre requisições para não sobrecarregar o servidor da Abicom.
 
-### Análise de Imagens (`src/analise_imagens.py`, acionado por `main.py --analyze`)
+### Análise Avançada de Imagens (`src/analise_imagens.py`)
 
-* Analisa todos os arquivos `.jpg` e `.jpeg` no diretório de saída configurado.
-* Utiliza **Processamento Paralelo** (`concurrent.futures`) para acelerar a análise, especialmente a etapa de OCR.
-* Extrai um conjunto rico de informações para cada imagem:
-    * **Metadados do Arquivo:** Caminho completo, nome do arquivo, pasta pai, tamanho em bytes.
-    * **Datas Inferidas:** Data extraída do nome do arquivo, Mês/Ano extraídos da pasta pai (se aplicável).
-    * **Propriedades da Imagem (via Pillow):** Largura (px), Altura (px), Modo de cor (ex: RGB), Formato (ex: JPEG).
-    * **Dados EXIF:** Extrai **todos** os metadados EXIF disponíveis e os salva como uma string JSON na coluna `exif_data_json`.
-    * **Conteúdo Textual (via EasyOCR):** Realiza OCR na imagem para extrair o texto visível. O texto bruto reconhecido é salvo na coluna `texto_easyocr`.
-* Gera um **arquivo CSV detalhado** com todas as informações extraídas na pasta `data/`, nomeado com timestamp (ex: `analise_paralela_ocr_YYYYMMDD_HHMMSS.csv`).
-* Exibe um resumo da análise no console após a conclusão.
-* Pode ser executado de forma independente (`python src/analise_imagens.py`).
+* **Processamento Paralelo:** Usa `concurrent.futures.ProcessPoolExecutor` para analisar múltiplas imagens simultaneamente, otimizando drasticamente o tempo de execução em máquinas multi-core.
+* **Extração de Metadados e Propriedades:** Utiliza `Pillow` para obter dimensões, modo de cor, formato da imagem e extrair dados EXIF (salvos como JSON na coluna `exif_data_json`).
+* **Extração de Tabelas com IA (OCR + Layout):** Integra a biblioteca `img2table` com o motor OCR `easyocr` (configurado para pt/en) para **detectar e reconstruir as tabelas** presentes nas imagens, mesmo aquelas sem bordas explícitas.
+* **Extração de Valores Específicos:** **Ponto chave do projeto:** Após o `img2table` gerar um DataFrame para cada tabela encontrada, uma lógica customizada (`find_indices_in_table`) analisa o *conteúdo* desse DataFrame para localizar células específicas (cruzando localidade, tipo de combustível e métrica) e extrai os **valores numéricos correspondentes** (preços, defasagens R$, defasagens %).
+* **Limpeza de Dados:** Inclui uma função (`clean_numeric_value`) para tratar os valores extraídos, removendo caracteres não numéricos (R$, %), convertendo vírgulas decimais para pontos e garantindo um formato numérico consistente (float).
+* **Relatório CSV Estruturado:** Consolida todos os dados (metadados do arquivo, propriedades da imagem, EXIF JSON e **os valores numéricos específicos extraídos**) em um DataFrame `pandas` e o salva em um arquivo CSV timestamped (ex: `data/analise_valores_extraidos_YYYYMMDD_HHMMSS.csv`), pronto para análise direta.
 
-## Estrutura do Projeto
+## 🛠️ Tecnologias Utilizadas
 
+* **Linguagem:** Python 3.8+
+* **Web Scraping:** `requests`, `beautifulsoup4`
+* **Processamento de Imagem:** `Pillow`
+* **OCR:** `easyocr`
+* **Extração de Tabelas:** `img2table`
+* **Manipulação de Dados:** `pandas`, `numpy`
+* **Paralelismo:** `concurrent.futures`
+* **Dependências AI:** `torch`, `torchvision`, `torchaudio` (para EasyOCR)
+* **Utilitários:** `logging`, `argparse`, `json`, `re`, `datetime`
+* **Ambiente:** `venv` (recomendado), Docker (opcional)
+* **Dependências Adicionais (prováveis):** `opencv-python-headless` (usado por `img2table`)
+
+## 🏗️ Estrutura do Projeto
+
+```text
 Abicom-WebScrapping-Project/
-├── .devcontainer/     # (Opcional) Configuração VS Code + Docker
-│   ├── devcontainer.json
-│   └── Dockerfile
-├── .vscode/           # (Opcional) Configurações VS Code
-│   └── settings.json
-├── src/               # Código fonte principal
-│   ├── init.py
-│   ├── config.py      # Configurações globais (URLs, pastas, etc.)
-│   ├── main.py        # Ponto de entrada principal (Scraper + chamada da Análise)
-│   ├── analise_imagens.py # Lógica de análise detalhada (Pillow, OCR, CSV)
-│   ├── models/        # Modelos de dados (ex: Image)
-│   ├── services/      # Serviços (HTTP Client, Image Service)
-│   ├── scrapers/      # Scrapers (Base e AbicomScraper)
-│   └── utils/         # Utilitários (URL, Arquivos)
-├── data/              # Dados gerados
-│   ├── images/        # Imagens baixadas (organizadas por mês, ex: 04-2025/)
-│   └── *.csv          # CSVs gerados pela análise
-├── requirements.txt   # Dependências Python do projeto
-├── scraper.log        # Arquivo de log gerado pela execução
-└── README.md          # Este arquivo
++-- .devcontainer/          # (Opcional) Configuração VS Code + Docker
+|   +-- devcontainer.json
+|   +-- Dockerfile
++-- .vscode/                # (Opcional) Configurações VS Code
+|   +-- settings.json
++-- src/                    # Código fonte principal
+|   +-- __init__.py
+|   +-- config.py           # Configurações globais
+|   +-- main.py             # Ponto de entrada (Scraper + chamada da Análise)
+|   +-- analise_imagens.py  # Lógica de análise (Pillow, OCR, Tabela, Valores, CSV)
+|   +-- models/             # Modelos de dados
+|   |   +-- __init__.py
+|   |   +-- image.py
+|   +-- services/           # Serviços
+|   |   +-- __init__.py
+|   |   +-- http_client.py
+|   |   +-- image_service.py
+|   +-- scrapers/           # Scrapers
+|   |   +-- __init__.py
+|   |   +-- base_scraper.py
+|   |   +-- abicom_scraper.py
+|   +-- utils/              # Utilitários
+|       +-- __init__.py
+|       +-- file_utils.py
+|       +-- url_utils.py
++-- data/                   # Dados gerados
+|   +-- images/             # Imagens baixadas (ex: 04-2025/...)
+|   +-- *.csv               # CSVs da análise
++-- requirements.txt        # Dependências Python
++-- scraper.log             # Log da execução
++-- README.md               # Este arquivo
+## ⚙️ Instalação e Configuração
 
-
-## Saída Gerada
-
-* **Imagens:** Salvas em `data/images/MM-YYYY/ppi-DD-MM-YYYY.jpg`.
-* **Relatório CSV:** Salvo em `data/analise_paralela_ocr_YYYYMMDD_HHMMSS.csv`. Contém colunas como:
-    * `nome_arquivo`, `pasta_pai`, `data_extraida_arquivo`, `mes_pasta`, `ano_pasta`
-    * `tamanho_bytes`, `largura_px`, `altura_px`, `modo_cor`, `formato_imagem`
-    * `texto_easyocr` (texto completo extraído via OCR)
-    * `exif_data_json` (string JSON com todos os dados EXIF encontrados)
-    * `erro_processamento` (indica se houve erro ao processar a imagem específica)
-    * `caminho_completo`
-
-## Requisitos
-
-* Python 3.8+
-* Pip (gerenciador de pacotes Python)
-* Bibliotecas Python listadas em `requirements.txt`. Chave incluem:
-    * `requests`
-    * `beautifulsoup4`
-    * `pandas`
-    * `Pillow` (para manipulação de imagem e EXIF)
-    * `numpy`
-    * `easyocr` (para OCR)
-    * `torch`, `torchvision`, `torchaudio` (dependências do `easyocr`)
-* **Importante (EasyOCR):** Na primeira vez que a análise com OCR for executada, a biblioteca `easyocr` pode precisar baixar modelos de linguagem da internet (ex: para português e inglês). Permita a conexão se solicitado.
-
-*Opcional:*
-* Docker
-* VS Code com extensão Remote - Containers (para usar o ambiente pré-configurado em `.devcontainer/`)
-
-## Configuração do Ambiente (venv)
-
-1.  Clone este repositório:
+1.  **Clone o Repositório:**
     ```bash
-    git clone <URL_DO_REPOSITORIO>
+    git clone <URL_DO_SEU_REPOSITORIO>
     cd Abicom-WebScrapping-Project
     ```
-2.  Crie um ambiente virtual:
+2.  **Crie e Ative um Ambiente Virtual:**
     ```bash
     python -m venv venv
+    # Windows: .\venv\Scripts\activate
+    # Linux/macOS: source venv/bin/activate
     ```
-3.  Ative o ambiente virtual:
-    * Windows (cmd/powershell): `.\venv\Scripts\activate`
-    * Linux / macOS: `source venv/bin/activate`
-4.  Instale as dependências:
+3.  **Instale as Dependências:**
     ```bash
     pip install -r requirements.txt
     ```
+    *Nota:* `easyocr` pode precisar baixar modelos de linguagem na primeira execução da análise. Certifique-se de ter conexão com a internet. `img2table` pode requerer `opencv-python-headless`.
 
-*(Alternativa: Se usar VS Code com a extensão Remote-Containers, abra a pasta do projeto e selecione "Reabrir no Container" para configurar o ambiente automaticamente via Docker).*
+4.  **(Opcional) Configure `src/config.py`:** Ajuste `OUTPUT_DIR`, `MAX_PAGES`, etc., se necessário.
 
-## Uso
+## 🚀 Como Usar
 
-**Importante:** Execute os comandos a partir do diretório raiz do projeto (`Abicom-WebScrapping-Project`).
+**Execute os comandos a partir da pasta raiz do projeto (`Abicom-WebScrapping-Project`).**
 
-1.  **Executar Apenas o Scraper:**
+1.  **Apenas Baixar/Atualizar Imagens:**
     ```bash
-    python -m src.main [opções]
+    python -m src.main
     ```
-    Isso baixará as imagens para `data/images/` conforme as configurações.
+    As imagens serão salvas em `data/images/`.
 
-2.  **Executar o Scraper e DEPOIS a Análise Completa (com OCR):**
+2.  **Baixar/Atualizar Imagens E Executar Análise Completa:**
     ```bash
-    python -m src.main --analyze [opções]
+    python -m src.main --analyze
     ```
-    Após o scraper terminar (ou ser interrompido), a análise será iniciada automaticamente. Um arquivo CSV será gerado em `data/`.
+    Após o scraping, a análise será executada. O CSV final (`analise_valores_extraidos_...csv`) será salvo em `data/`.
 
-3.  **Executar Apenas a Análise Completa (com OCR) em imagens já baixadas:**
+3.  **Executar Apenas a Análise (em imagens já baixadas):**
     ```bash
     python src/analise_imagens.py
     ```
-    Isso analisará as imagens no diretório configurado em `src/config.py` (ou o padrão `data/images/`) e gerará o CSV em `data/`.
+    Analisará as imagens em `data/images/` (ou conforme `config.py`) e gerará o CSV em `data/`.
 
-**Opções de Linha de Comando para `src/main.py`:**
+**Opções de Linha de Comando (`src/main.py`):**
 
-* `--start-page N`: Define a página inicial do scraping (padrão: 1).
-* `--max-pages N`: Define o número máximo de páginas a processar (padrão do `config.py`).
-* `--output-dir /caminho/para/pasta`: Especifica o diretório de saída para as *imagens* (padrão do `config.py`). O CSV da análise será salvo no diretório *pai* deste.
-* `--verbose`: Habilita logs mais detalhados no console e no `scraper.log`.
-* `--analyze`: Ativa a execução da análise detalhada (com OCR) após o scraping.
+* `--start-page N`: Define a página inicial do scraping.
+* `--max-pages N`: Define o número máximo de páginas a processar.
+* `--output-dir /path/to/images`: Especifica o diretório para salvar imagens (o CSV vai para o diretório pai).
+* `--verbose`: Ativa logs mais detalhados (nível DEBUG).
+* `--analyze`: Executa a análise completa (com OCR/extração de valores) após o scraping.
 
-## Configurações
+## ⚠️ Notas Importantes e Limitações
 
-Ajustes podem ser feitos no arquivo `src/config.py`:
-
-* `BASE_URL`: URL da categoria a ser raspada.
-* `OUTPUT_DIR`: Diretório base onde a pasta `images` será criada.
-* `ORGANIZE_BY_MONTH`: `True` (padrão) para criar subpastas `MM-YYYY` dentro de `images`, `False` para salvar tudo direto em `images`.
-* `MAX_PAGES`: Número padrão de páginas a processar se não especificado na linha de comando.
-* `SLEEP_BETWEEN_REQUESTS`, `SLEEP_BETWEEN_PAGES`: Pausas para evitar sobrecarga no servidor.
-* *(Avançado):* Idiomas do EasyOCR (`['pt', 'en']`) poderiam ser movidos para cá.
-
-## Notas e Limitações
-
-* **Performance do OCR:** A análise com OCR é intensiva em CPU e memória. O uso de paralelismo acelera o processo em máquinas multi-core, mas ainda pode levar tempo para analisar um grande número de imagens.
-* **Precisão do OCR:** A qualidade do texto extraído depende da resolução e clareza da imagem original.
-* **Parsing do Texto OCR:** O script salva o texto *bruto* extraído pelo OCR. Para extrair valores específicos das tabelas contidas nesse texto, é necessária lógica adicional de parsing (ex: usando Expressões Regulares ou bibliotecas de análise de tabelas mais avançadas) a ser aplicada sobre a coluna `texto_easyocr` do CSV gerado.
-* **Ética e Termos de Uso:** Sempre verifique o arquivo `robots.txt
+* **Dependência da Estrutura do Site:** O scraper depende da estrutura HTML atual da Abicom. Mudanças no site podem quebrá-lo.
+* **Qualidade do OCR/Tabela:** A precisão da extração de tabelas (`img2table`) e do OCR (`easyocr`) depende da qualidade e consistência das imagens originais.
+* **Lógica de Extração de Valores (`find_indices_in_table`):** Esta função em `analise_imagens.py` é **crucial** e **altamente dependente** do layout da tabela retornado pelo `img2table`. **É muito provável que você precise inspecionar o DataFrame extraído (adicionando prints temporários) e ajustar essa lógica** para garantir que os valores corretos sejam localizados e extraídos de forma confiável para todas as variações de imagem.
+* **Performance:** A análise com OCR é intensiva. O paralelismo acelera, mas processar milhares de imagens ainda levará tempo considerável.
+* **Ética:** Use com responsabilidade. Respeite os Termos de Serviço do site e evite sobrecarregá-lo (mantenha as pausas configuradas).
