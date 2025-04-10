@@ -1,6 +1,6 @@
 # Abicom Web Scraper & Advanced Image Analyzer
 
-![Demonstração](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)
+[![Demonstração](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)](https://www.linkedin.com/in/zukelima/)
 
 ## Visão Geral
 
@@ -10,7 +10,7 @@ O pipeline consiste em duas etapas principais:
 1.  **Web Scraping:** Coleta eficiente das imagens de relatório do site.
 2.  **Análise de Imagem Avançada:** Processamento paralelo das imagens para extrair metadados, propriedades e, crucialmente, dados tabulares específicos usando OCR e análise de layout.
 
-**Desenvolvido por:** Zuke Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
+**Desenvolvido por:** Lucas Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
 
 ---
 
@@ -82,14 +82,13 @@ Abicom-WebScrapping-Project/
 +-- requirements.txt        # Dependências Python
 +-- scraper.log             # Log da execução
 +-- README.md               # Este arquivo
-
 ```
 
 ## ⚙️ Instalação e Configuração
 
 1.  **Clone o Repositório:**
     ```bash
-    git clone <URL_DO_SEU_REPOSITORIO>
+    git clone https://github.com/ZukeLima/Abicom-WebScrapping-Project
     cd Abicom-WebScrapping-Project
     ```
 2.  **Crie e Ative um Ambiente Virtual:**
@@ -140,6 +139,5 @@ Abicom-WebScrapping-Project/
 
 * **Dependência da Estrutura do Site:** O scraper depende da estrutura HTML atual da Abicom. Mudanças no site podem quebrá-lo.
 * **Qualidade do OCR/Tabela:** A precisão da extração de tabelas (`img2table`) e do OCR (`easyocr`) depende da qualidade e consistência das imagens originais.
-* **Lógica de Extração de Valores (`find_indices_in_table`):** Esta função em `analise_imagens.py` é **crucial** e **altamente dependente** do layout da tabela retornado pelo `img2table`. **É muito provável que você precise inspecionar o DataFrame extraído (adicionando prints temporários) e ajustar essa lógica** para garantir que os valores corretos sejam localizados e extraídos de forma confiável para todas as variações de imagem.
-* **Performance:** A análise com OCR é intensiva. O paralelismo acelera, mas processar milhares de imagens ainda levará tempo considerável.
-* **Ética:** Use com responsabilidade. Respeite os Termos de Serviço do site e evite sobrecarregá-lo (mantenha as pausas configuradas).
+* **Lógica de Extração de Valores (`find_indices_in_table`):** Esta função em `analise_imagens.py` é
+
