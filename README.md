@@ -82,6 +82,9 @@ Abicom-WebScrapping-Project/
 +-- requirements.txt        # Dependências Python
 +-- scraper.log             # Log da execução
 +-- README.md               # Este arquivo
+
+```
+
 ## ⚙️ Instalação e Configuração
 
 1.  **Clone o Repositório:**
