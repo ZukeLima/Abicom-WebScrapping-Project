@@ -6,6 +6,8 @@
 
 Coleta imagens de relatórios PPI do site Abicom e extrai a primeira tabela detectada via OCR/análise de layout, salvando-a como um arquivo CSV individual em `data/tabelas_por_mes/MM-YYYY/`.
 
+**Desenvolvido por:** Lucas Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
+
 ## 2. Workflow Básico
 
 1.  **Execução (`src/main.py`):** Orquestra as etapas via `python -m src.main`.
