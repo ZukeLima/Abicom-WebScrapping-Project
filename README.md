@@ -1,143 +1,154 @@
-# Abicom Web Scraper & Advanced Image Analyzer
+# Abicom PPI - Scraper e Extrator de Tabela de Imagens
 
-[![Demonstração](https://c.tenor.com/OjVjDqcWaIoAAAAd/tenor.gif)](https://www.linkedin.com/in/zukelima/)
+[![Versão Python](https://img.shields.io/badge/python-3.8+-blue)](https://www.python.org/) [![Licença](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
-## Visão Geral
+## 1. Sumário
 
-Este projeto automatiza completamente o processo de coleta e extração de dados de relatórios diários de Preço de Paridade de Importação (PPI) de combustíveis, publicados como imagens pela Abicom em seu site (`https://abicom.com.br/categoria/ppi/`). Ele supera os desafios da extração manual, transformando dados visuais complexos em informações estruturadas e prontas para análise.
+Coleta imagens de relatórios PPI do site Abicom e extrai a primeira tabela detectada via OCR/análise de layout, salvando-a como um arquivo CSV individual em `data/tabelas_por_mes/MM-YYYY/`.
 
-O pipeline consiste em duas etapas principais:
-1.  **Web Scraping:** Coleta eficiente das imagens de relatório do site.
-2.  **Análise de Imagem Avançada:** Processamento paralelo das imagens para extrair metadados, propriedades e, crucialmente, dados tabulares específicos usando OCR e análise de layout.
+## 2. Workflow Básico
 
-**Desenvolvido por:** Lucas Lima <a href="https://www.linkedin.com/in/zukelima/" target="_blank" rel="noopener noreferrer"><img src="https://cdn-icons-png.flaticon.com/256/174/174857.png" alt="LinkedIn" width="24" height="24" style="vertical-align:middle;"></a>
+1.  **Execução (`src/main.py`):** Orquestra as etapas via `python -m src.main`.
+2.  **Scraping (`src/scrapers/abicom_scraper.py`):** Identifica URLs de posts/imagens.
+3.  **Download/Verificação (`src/services/image_service.py`):** Baixa imagens novas, evita duplicatas (verificação de arquivos), organiza em `data/images/MM-YYYY/`.
+4.  **Análise de Imagem (`src/analise_imagens.py`):** Processa imagens em `data/images/` (paralelamente): pré-processamento (opcional), extração da 1ª tabela (`img2table`/`easyocr`), tratamento de cabeçalho (`ffill`), salvamento do CSV individual em `data/tabelas_por_mes/MM-YYYY/`.
+5.  **Relatório:** Exibe contagem de sucessos/falhas da análise no console.
 
----
+## 3. Componentes Principais
 
-## ✨ Funcionalidades Principais
+* **`src/main.py`:** Orquestrador do fluxo, `argparse`, config. logging.
+* **`src/config.py`:** Constantes globais (URLs, Paths, Limites).
+* **`src/scrapers/abicom_scraper.py`:** Lógica de scraping Abicom (`requests`, `bs4`).
+* **`src/services/image_service.py`:** Gerencia download/verificação de imagens (sem DB).
+* **`src/analise_imagens.py`:** Lógica de análise (paralelismo, `Pillow`, `img2table`, `easyocr`, `pandas`, salvamento CSVs individuais).
+* **`src/services/http_client.py`:** Cliente HTTP com re-tentativas (`requests.Session`).
 
-### Web Scraping (`src/main.py` & Módulos)
+## 4. Dependências Principais
 
-* **Coleta Focada:** Navega pela paginação da categoria PPI da Abicom, identificando e baixando apenas a imagem de relatório principal (`.jpg`/`.jpeg`) de cada post diário.
-* **Eficiência:** Utiliza um `ImageService` que pré-indexa arquivos já baixados para **evitar downloads duplicados**, economizando tempo e banda.
-* **Organização:** Salva as imagens em uma estrutura lógica de pastas por mês e ano (`data/images/MM-YYYY`) com nomes padronizados (`ppi-DD-MM-YYYY.jpg`).
-* **Robustez:** Emprega um `HttpClient` customizado com `requests.Session`, retentativas automáticas para erros de rede/timeout e headers apropriados.
-* **Cortesia:** Inclui pausas configuráveis (`time.sleep`) entre requisições para não sobrecarregar o servidor da Abicom.
+* **Linguagem:** Python (>= 3.8)
+* **Bibliotecas:** `requests`, `beautifulsoup4`, `Pillow`, `easyocr`, `img2table`, `pandas`, `numpy`, `torch`/`torchvision` (CPU), `concurrent.futures`, `logging`, `argparse`, `re`.
 
-### Análise Avançada de Imagens (`src/analise_imagens.py`)
+*(Consulte `requirements.txt`)*
 
-* **Processamento Paralelo:** Usa `concurrent.futures.ProcessPoolExecutor` para analisar múltiplas imagens simultaneamente, otimizando drasticamente o tempo de execução em máquinas multi-core.
-* **Extração de Metadados e Propriedades:** Utiliza `Pillow` para obter dimensões, modo de cor, formato da imagem e extrair dados EXIF (salvos como JSON na coluna `exif_data_json`).
-* **Extração de Tabelas com IA (OCR + Layout):** Integra a biblioteca `img2table` com o motor OCR `easyocr` (configurado para pt/en) para **detectar e reconstruir as tabelas** presentes nas imagens, mesmo aquelas sem bordas explícitas.
-* **Extração de Valores Específicos:** **Ponto chave do projeto:** Após o `img2table` gerar um DataFrame para cada tabela encontrada, uma lógica customizada (`find_indices_in_table`) analisa o *conteúdo* desse DataFrame para localizar células específicas (cruzando localidade, tipo de combustível e métrica) e extrai os **valores numéricos correspondentes** (preços, defasagens R$, defasagens %).
-* **Limpeza de Dados:** Inclui uma função (`clean_numeric_value`) para tratar os valores extraídos, removendo caracteres não numéricos (R$, %), convertendo vírgulas decimais para pontos e garantindo um formato numérico consistente (float).
-* **Relatório CSV Estruturado:** Consolida todos os dados (metadados do arquivo, propriedades da imagem, EXIF JSON e **os valores numéricos específicos extraídos**) em um DataFrame `pandas` e o salva em um arquivo CSV timestamped (ex: `data/analise_valores_extraidos_YYYYMMDD_HHMMSS.csv`), pronto para análise direta.
 
-## 🛠️ Tecnologias Utilizadas
-
-* **Linguagem:** Python 3.8+
-* **Web Scraping:** `requests`, `beautifulsoup4`
-* **Processamento de Imagem:** `Pillow`
-* **OCR:** `easyocr`
-* **Extração de Tabelas:** `img2table`
-* **Manipulação de Dados:** `pandas`, `numpy`
-* **Paralelismo:** `concurrent.futures`
-* **Dependências AI:** `torch`, `torchvision`, `torchaudio` (para EasyOCR)
-* **Utilitários:** `logging`, `argparse`, `json`, `re`, `datetime`
-* **Ambiente:** `venv` (recomendado), Docker (opcional)
-* **Dependências Adicionais (prováveis):** `opencv-python-headless` (usado por `img2table`)
-
-## 🏗️ Estrutura do Projeto
+## 🏗️ 4. Estrutura do Projeto
 
 ```text
 Abicom-WebScrapping-Project/
-+-- .devcontainer/          # (Opcional) Configuração VS Code + Docker
+|
++-- .venv/                     # Ambiente Virtual Python (ex: python -m venv venv)
+|
++-- .devcontainer/             # (Opcional) Configuração VS Code + Docker
 |   +-- devcontainer.json
 |   +-- Dockerfile
-+-- .vscode/                # (Opcional) Configurações VS Code
++-- .vscode/                   # (Opcional) Configurações VS Code
 |   +-- settings.json
-+-- src/                    # Código fonte principal
-|   +-- __init__.py
-|   +-- config.py           # Configurações globais
-|   +-- main.py             # Ponto de entrada (Scraper + chamada da Análise)
-|   +-- analise_imagens.py  # Lógica de análise (Pillow, OCR, Tabela, Valores, CSV)
-|   +-- models/             # Modelos de dados
-|   |   +-- __init__.py
-|   |   +-- image.py
-|   +-- services/           # Serviços
-|   |   +-- __init__.py
-|   |   +-- http_client.py
-|   |   +-- image_service.py
-|   +-- scrapers/           # Scrapers
-|   |   +-- __init__.py
-|   |   +-- base_scraper.py
-|   |   +-- abicom_scraper.py
-|   +-- utils/              # Utilitários
-|       +-- __init__.py
-|       +-- file_utils.py
-|       +-- url_utils.py
-+-- data/                   # Dados gerados
-|   +-- images/             # Imagens baixadas (ex: 04-2025/...)
-|   +-- *.csv               # CSVs da análise
-+-- requirements.txt        # Dependências Python
-+-- scraper.log             # Log da execução
-+-- README.md               # Este arquivo
+|
++-- src/                       # Código Fonte (Package 'src')
+|   |-- __init__.py            # Inicializador do pacote
+|   |-- config.py              # Configurações globais (URLs, Paths, etc.)
+|   |-- main.py                # Ponto de entrada principal (orquestra Scraper e Análise)
+|   |-- analise_imagens.py     # Lógica de análise (OCR, Extração, Salvar CSVs Indiv.) <-- Descrição Atualizada
+|   |-- models/                # Modelos de dados (dataclasses)
+|   |   |-- __init__.py
+|   |   |-- image.py           # Dataclass 'Image'
+|   |-- services/              # Serviços reutilizáveis
+|   |   |-- __init__.py
+|   |   |-- http_client.py     # Cliente HTTP com retentativas
+|   |   |-- image_service.py   # Gerenciador de imagens (versão sem DB)
+|   |-- scrapers/              # Scrapers específicos do site
+|   |   |-- __init__.py
+|   |   |-- base_scraper.py    # Classe base abstrata
+|   |   |-- abicom_scraper.py  # Implementação para Abicom
+|   |-- utils/                 # Funções utilitárias
+|   |   |-- __init__.py
+|   |   |-- file_utils.py      # Utilitários de arquivo
+|   |   |-- url_utils.py       # Utilitários de URL
+|
++-- data/                      # Diretório de Dados Gerados (Criado automaticamente)
+|   |-- images/                # Imagens baixadas pelo scraper
+|   |   |-- MM-YYYY/           # Organizadas por mês/ano (se habilitado)
+|   |       |-- ppi-DD-MM-YYYY.jpg
+|   |-- tabelas_por_mes/       # CSVs das tabelas individuais extraídas <-- ATUALIZADO
+|   |   |-- MM-YYYY/           # Organizadas por mês/ano <-- ATUALIZADO
+|   |       |-- ppi-DD-MM-YYYY_tabela.csv <-- ATUALIZADO
+|   |-- error.log              # Log específico de erros (ERROR/CRITICAL) <-- ADICIONADO/Confirmado
+|
++-- requirements.txt           # Dependências Python
++-- scraper.log                # Log geral da execução (INFO/DEBUG)
++-- README.md                  # Documentação (Este arquivo)
+
 ```
 
-## ⚙️ Instalação e Configuração
 
-1.  **Clone o Repositório:**
-    ```bash
-    git clone https://github.com/ZukeLima/Abicom-WebScrapping-Project
-    cd Abicom-WebScrapping-Project
-    ```
-2.  **Crie e Ative um Ambiente Virtual:**
-    ```bash
-    python -m venv venv
-    # Windows: .\venv\Scripts\activate
-    # Linux/macOS: source venv/bin/activate
-    ```
-3.  **Instale as Dependências:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *Nota:* `easyocr` pode precisar baixar modelos de linguagem na primeira execução da análise. Certifique-se de ter conexão com a internet. `img2table` pode requerer `opencv-python-headless`.
+## 5. ⚙️ Instalação
 
-4.  **(Opcional) Configure `src/config.py`:** Ajuste `OUTPUT_DIR`, `MAX_PAGES`, etc., se necessário.
+1.  **Pré-requisitos:** Python >= 3.8, `pip`, `git`.
+2.  **Clone:** `git clone <URL_DO_SEU_REPOSITORIO> Abicom-WebScrapping-Project && cd Abicom-WebScrapping-Project`
+3.  **Ambiente Virtual:** `python -m venv venv && source venv/bin/activate` (ou `.\venv\Scripts\activate` no Windows)
+4.  **PyTorch (CPU):** É crucial instalar a versão correta **antes** do `easyocr`. Visite [pytorch.org](https://pytorch.org/), selecione: Stable, seu OS, Pip, Python, **CPU**. Copie e execute o comando `pip install` fornecido pelo site.
+5.  **Dependências:** `pip install -r requirements.txt`.
+    *(Nota: Verifique se `requirements.txt` está atualizado. `easyocr` baixará modelos na primeira execução. `img2table` pode requerer `opencv-python-headless` - `pip install opencv-python-headless`).*
 
-## 🚀 Como Usar
+## 6. Configuração
 
-**Execute os comandos a partir da pasta raiz do projeto (`Abicom-WebScrapping-Project`).**
+* **Geral (`src/config.py`):** Ajuste constantes como `BASE_URL`, `MAX_PAGES`, `OUTPUT_DIR` (para imagens), `DATA_DIR` (para logs e tabelas), `SLEEP_*`, `IMAGE_EXTENSIONS`.
+* **Análise (`src/analise_imagens.py`):** Ajuste constantes no topo do arquivo para otimização:
+    * `MAX_IMAGE_DIM_FOR_OCR`: Limite para redimensionamento pré-OCR (use `None` para desabilitar).
+    * `CROP_BOX_MAIN_TABLE`: Coordenadas relativas `(esq, topo, dir, fundo)` para corte pré-OCR (use `None` para desabilitar). Requer testes.
+    * Parâmetros internos de `img2table.extract_tables()` (ex: `min_confidence`) podem ser ajustados dentro da função `processar_e_salvar_tabela_individual`.
 
-1.  **Apenas Baixar/Atualizar Imagens:**
+## 7. Utilização
+
+Execute os comandos a partir do **diretório raiz do projeto** com o `venv` ativado. Utilize `python -m` para garantir a correta resolução de pacotes.
+
+* **Modo 1: Apenas Scraping** (Baixa/atualiza imagens em `data/images/`)
     ```bash
     python -m src.main
     ```
-    As imagens serão salvas em `data/images/`.
 
-2.  **Baixar/Atualizar Imagens E Executar Análise Completa:**
+* **Modo 2: Scraping + Análise Completa** (Baixa/atualiza imagens, depois analisa todas e salva CSVs individuais em `data/tabelas_por_mes/`)
     ```bash
     python -m src.main --analyze
+    # ou alias:
+    python -m src.main -a
     ```
-    Após o scraping, a análise será executada. O CSV final (`analise_valores_extraidos_...csv`) será salvo em `data/`.
 
-3.  **Executar Apenas a Análise (em imagens já baixadas):**
-    ```bash
-    python src/analise_imagens.py
-    ```
-    Analisará as imagens em `data/images/` (ou conforme `config.py`) e gerará o CSV em `data/`.
+* **Modo 3: Apenas Análise** (Processa imagens existentes em `data/images/`, salva CSVs individuais em `data/tabelas_por_mes/`)
+    * Análise paralela (padrão):
+        ```bash
+        python -m src.analise_imagens
+        ```
+    * Análise sequencial (1 worker, útil para debug):
+        ```bash
+        python -m src.analise_imagens -w 1
+        ```
+    * Análise de UMA imagem específica (ótimo para debug):
+        ```bash
+        python -m src.analise_imagens -i data/images/MM-YYYY/nome_da_imagem.jpg
+        ```
+        *(Substitua pelo caminho real)*
+    * **Log Detalhado (DEBUG):** Adicione `-v` ou `--verbose` a qualquer comando `analise_imagens` ou `main`.
 
-**Opções de Linha de Comando (`src/main.py`):**
+**Opções de Linha de Comando (`python -m src.main`):**
 
-* `--start-page N`: Define a página inicial do scraping.
-* `--max-pages N`: Define o número máximo de páginas a processar.
-* `--output-dir /path/to/images`: Especifica o diretório para salvar imagens (o CSV vai para o diretório pai).
-* `--verbose`: Ativa logs mais detalhados (nível DEBUG).
-* `--analyze`: Executa a análise completa (com OCR/extração de valores) após o scraping.
+* `--start-page N`: Página inicial do scraping.
+* `--max-pages N`: Número máximo de páginas a raspar.
+* `--output-dir /path/`: Diretório de saída das **imagens**.
+* `-v`, `--verbose`: Ativa log nível DEBUG.
+* `-a`, `--analyze`: Executa a etapa de análise após o scraping (salva tabelas individuais).
 
-## ⚠️ Notas Importantes e Limitações
+## 8. Saída Gerada
 
-* **Dependência da Estrutura do Site:** O scraper depende da estrutura HTML atual da Abicom. Mudanças no site podem quebrá-lo.
-* **Qualidade do OCR/Tabela:** A precisão da extração de tabelas (`img2table`) e do OCR (`easyocr`) depende da qualidade e consistência das imagens originais.
-* **Lógica de Extração de Valores (`find_indices_in_table`):** Esta função em `analise_imagens.py` é
+* **Imagens:** `data/images/MM-YYYY/ppi-DD-MM-YYYY.jpg`
+* **Tabelas Extraídas (CSV):** `data/tabelas_por_mes/MM-YYYY/ppi-DD-MM-YYYY_tabela.csv` (Cada arquivo contém a primeira tabela extraída da imagem correspondente, com cabeçalho tratado e usando `-` como separador).
+* **Logs:**
+    * `scraper.log`: Log geral (INFO ou DEBUG).
+    * `data/error.log`: Log específico de erros (ERROR/CRITICAL).
 
+## 9. Limitações e Pontos de Atenção
+
+* **Dependência do Website:** A estrutura HTML do site da Abicom pode mudar, exigindo ajustes no scraper (`src/scrapers/abicom_scraper.py`). A lógica de detecção de imagens pode precisar de revisão.
+* **Precisão OCR/Extração:** A qualidade da extração depende das imagens e das bibliotecas (`easyocr`/`img2table`). Requer experimentação com os parâmetros de pré-processamento e extração em `src/analise_imagens.py`.
+* **Foco na Primeira Tabela:** Apenas a primeira tabela detectada por `img2table` é processada e salva.
+* **Performance CPU:** OCR é intensivo. O tempo de análise pode ser considerável.
