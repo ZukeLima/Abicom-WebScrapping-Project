@@ -1,185 +1,175 @@
-# src/main.py
-
+# src/main.py 
 """
-Ponto de entrada principal para o scraper da Abicom.
+Ponto de entrada principal para o scraper da Abicom (versão SEM DB).
+Orquestra: Configuração, Scraping (download imagens), Análise de Imagens
+(extrai tabelas e salva CSVs individuais por mês/ano).
 """
+# --- Imports Padrão ---
 import os
 import sys
 import logging
 import argparse
-# Remova imports não usados diretamente em main.py se a análise for externa
-# import re
-# import pandas as pd
-# from datetime import datetime
+from logging import FileHandler, StreamHandler # Import explícito
 
-# Importações do projeto
-from src.scrapers.abicom_scraper import AbicomScraper
-from src.config import MAX_PAGES, OUTPUT_DIR, ORGANIZE_BY_MONTH
-# Importa a função de análise externa
+# --- Configuração de Logging (NO TOPO) ---
+# Configura logging antes de importar módulos do projeto
 try:
-    from src.analise_imagens import executar_e_reportar_analise
+    import src.config # Importa config para pegar DATA_DIR
+    DATA_DIR_FOR_LOG = src.config.DATA_DIR
+    if not DATA_DIR_FOR_LOG or not os.path.isdir(DATA_DIR_FOR_LOG): raise ValueError("DATA_DIR inválido")
+    os.makedirs(DATA_DIR_FOR_LOG, exist_ok=True)
+    ERROR_LOG_PATH = os.path.join(DATA_DIR_FOR_LOG, 'error.log'); GENERAL_LOG_PATH = 'scraper.log'
+except Exception as config_err:
+    print(f"[CONFIG FALLBACK] Erro obter/criar DATA_DIR: {config_err}. Usando 'data' relativo.", file=sys.stderr)
+    _fallback_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+    os.makedirs(_fallback_data_dir, exist_ok=True); DATA_DIR_FOR_LOG = _fallback_data_dir
+    ERROR_LOG_PATH = os.path.join(DATA_DIR_FOR_LOG, 'error.log'); GENERAL_LOG_PATH = 'scraper.log'
+# Configuração base
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
+root_logger = logging.getLogger(); # Obtém logger raiz
+for handler in root_logger.handlers[:]: root_logger.removeHandler(handler) # Limpa handlers default
+# Handler Console (INFO+)
+console_handler = StreamHandler(sys.stdout); console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'); console_handler.setFormatter(console_formatter)
+root_logger.addHandler(console_handler)
+# Handler Log Geral (DEBUG+)
+try:
+    general_log_handler = FileHandler(GENERAL_LOG_PATH, mode='w', encoding='utf-8'); general_log_handler.setLevel(logging.DEBUG)
+    general_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'); general_log_handler.setFormatter(general_formatter)
+    root_logger.addHandler(general_log_handler)
+except Exception as log_gen_err: print(f"ERRO: Falha criar log geral '{GENERAL_LOG_PATH}': {log_gen_err}", file=sys.stderr)
+# Handler Log de Erro (ERROR+)
+try:
+    error_log_handler = FileHandler(ERROR_LOG_PATH, mode='w', encoding='utf-8'); error_log_handler.setLevel(logging.ERROR)
+    error_log_handler.setFormatter(general_formatter); root_logger.addHandler(error_log_handler)
+    print(f"INFO: Log de erros será salvo em: {ERROR_LOG_PATH}")
+except Exception as log_err: print(f"ERRO: Falha config log erro '{ERROR_LOG_PATH}': {log_err}", file=sys.stderr)
+# Logger específico para main.py
+logger = logging.getLogger(__name__)
+# --- Fim Configuração de Logging ---
+
+
+# --- Imports do Projeto ---
+logger.debug("Iniciando imports do projeto...")
+from .scrapers.abicom_scraper import AbicomScraper # Scraper Abicom
+try: # Configurações
+    from .config import MAX_PAGES, OUTPUT_DIR, ORGANIZE_BY_MONTH, BASE_URL, DATA_DIR
+    logger.info("Configurações carregadas de .config.")
+except ImportError as e: # Fallback
+    logger.critical(f"Falha CRÍTICA importar config: {e}. Usando fallbacks.", exc_info=True); raise e
+# Serviço de Imagem (Versão SEM DB)
+from .services.image_service import ImageService
+try: # Função de Análise (Versão SEM DB - Salva Tabelas Individuais)
+    from .analise_imagens import executar_e_reportar_analise
     analysis_function_available = True
-except ImportError as ie:
-    executar_e_reportar_analise = None
-    analysis_function_available = False
-    # Log configurado abaixo, mas imprime erro crítico imediatamente
-    print(f"ERRO CRÍTICO: Não foi possível importar a função de análise avançada: {ie}", file=sys.stderr)
-    print("Verifique se todas as dependências de 'analise_imagens.py' (pandas, Pillow, numpy, easyocr, torch, img2table) estão instaladas.", file=sys.stderr)
+    logger.info("Função de análise 'executar_e_reportar_analise' importada.")
+except ImportError as ie: # Erro ao importar análise
+    logger.error(f"Falha ao importar '.analise_imagens': {ie}", exc_info=True)
+    executar_e_reportar_analise = None; analysis_function_available = False
+    logger.warning("--> Análise avançada indisponível.")
 
-# Configuração de logging
-logging.basicConfig(
-    level=logging.INFO, # Nível inicial, pode ser alterado por --verbose
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('scraper.log', mode='w') # modo 'w' para sobrescrever log a cada execução
-    ]
-)
-logger = logging.getLogger(__name__) # Logger principal para main.py
+# REMOVIDO: Import da função de tratamento final do CSV
+# try: from .tratamento_dados import executar_tratamento_csv ...
+# --- Fim Imports ---
 
-# Função parse_arguments (sem alterações)
+
+# --- Definição das Funções ---
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Web Scraper e Analisador Abicom PPI')
-    parser.add_argument('--start-page', type=int, default=1, help='Página inicial (padrão: 1)')
-    parser.add_argument('--max-pages', type=int, default=MAX_PAGES, help=f'Máximo de páginas (padrão: {MAX_PAGES})')
-    parser.add_argument('--output-dir', type=str, default=OUTPUT_DIR, help=f'Diretório de saída para imagens (padrão: {OUTPUT_DIR})')
-    parser.add_argument('--verbose', action='store_true', help='Habilita logging detalhado (DEBUG)')
-    parser.add_argument('--analyze', action='store_true', help='Executa análise avançada (OCR/Tabela) após scraping.')
+    """ Analisa os argumentos da linha de comando. """
+    parser = argparse.ArgumentParser(
+        description='Web Scraper Abicom PPI e Analisador de Imagens (Salva Tabelas Individuais)', # Descrição atualizada
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument('--start-page', type=int, default=1, help='Página inicial.')
+    parser.add_argument('--max-pages', type=int, default=MAX_PAGES, help=f'Máx. páginas ({MAX_PAGES}).')
+    parser.add_argument('--output-dir', type=str, default=OUTPUT_DIR, help=f'Dir. saída imagens ({OUTPUT_DIR}).')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Log DEBUG.')
+    # Help ajustado para refletir a saída atual da análise
+    parser.add_argument('--analyze', '-a', action='store_true', help='Executa análise (gera CSVs individuais por mês).')
     return parser.parse_args()
 
+# --- Função Principal (main) ---
 def main():
-    """
-    Função principal: executa scraper e, opcionalmente, a análise.
-    """
-    args = parse_arguments()
-
-    # Configura nível de log global baseado em --verbose
-    log_level = logging.DEBUG if args.verbose else logging.INFO
-    logging.getLogger().setLevel(log_level) # Ajusta o nível do logger raiz
-
-    # Diretório para salvar o CSV da análise (diretório pai do diretório das imagens)
+    """ Função principal (Versão Sem DB): Orquestra o processo. """
+    exit_code = 0 # Código de saída
     try:
-        data_dir_analysis = os.path.dirname(args.output_dir)
-        if not data_dir_analysis: # Caso output_dir seja a raiz (improvável)
-             data_dir_analysis = "."
-        os.makedirs(data_dir_analysis, exist_ok=True)
-    except Exception as dir_err:
-         logger.critical(f"Erro ao definir/criar diretório de análise '{data_dir_analysis}' a partir de '{args.output_dir}': {dir_err}")
-         return 1 # Erro crítico de diretório
+        # 1. Parse Args & Setup Logging Level
+        args = parse_arguments()
+        log_level = logging.DEBUG if args.verbose else logging.INFO
+        logging.getLogger().setLevel(log_level) # Define nível global do log
+        logger.info(f"Nível de log definido para: {logging.getLevelName(log_level)}")
 
-    logger.info(f"--- Iniciando Execução ---")
-    logger.info(f"Scraper: Páginas {args.start_page} a {args.start_page + args.max_pages - 1}")
-    logger.info(f"Diretório de Imagens: {args.output_dir}")
-    logger.info(f"Organizar por Mês: {ORGANIZE_BY_MONTH}")
-    logger.info(f"Análise Avançada (--analyze): {'Habilitada' if args.analyze else 'Desabilitada'}")
-    if args.analyze and not analysis_function_available:
-        logger.error("Análise avançada foi solicitada, mas não está disponível devido a erro de importação.")
+        # 2. Verificando/Criando Diretórios
+        logger.info("--- 1. Verificando Diretórios ---")
+        logger.info(f"Dir. imagens: {args.output_dir}")
+        logger.info(f"Dir. dados: {DATA_DIR}")
+        # O diretório data/tabelas_por_mes será criado por analise_imagens.py se necessário
+        data_dir_analysis = DATA_DIR # Usado para passar para análise
 
-    # Garante que o diretório de saída das imagens exista
-    try:
-        os.makedirs(args.output_dir, exist_ok=True)
-    except Exception as dir_err:
-        logger.critical(f"Erro ao criar diretório de saída de imagens '{args.output_dir}': {dir_err}")
-        return 1
+        # 3. Log Inicial da Execução
+        logger.info(f"--- 2. Iniciando Execução (Versão Sem DB) ---")
+        logger.info(f"Argumentos: {args}")
+        logger.info(f"Configs: OrganizePorMês={ORGANIZE_BY_MONTH}, URL={BASE_URL}")
+        analysis_status_log = "HABILITADA" if args.analyze else "DESABILITADA";
+        if args.analyze and not analysis_function_available: analysis_status_log += " (FUNÇÃO INDISPONÍVEL!)"
+        logger.info(f"Análise (--analyze): {analysis_status_log}") # Log não menciona mais tratamento
 
-    total_downloads = 0
-    scraper_success = False # Flag para indicar sucesso do scraper
-    exception_during_scraping = None # Armazena exceção do scraper
+        # --- 4. Bloco Scraper ---
+        total_downloads = 0; scraper_success = False; exception_during_scraping = None
+        logger.info("--- 3. Iniciando Bloco do Scraper ---")
+        try:
+            image_service = ImageService(output_dir=args.output_dir) # Versão Sem DB
+            logger.info("Pré-indexando imagens existentes no disco...")
+            image_service.pre_check_monthly_images() # Necessário para ImageService Sem DB
+            with AbicomScraper(image_service=image_service, base_url=BASE_URL) as scraper:
+                 total_downloads = scraper.run(start_page=args.start_page, max_pages=args.max_pages)
+            if total_downloads > 0: logger.info(f"Scraping OK. {total_downloads} novas imagens.")
+            else: logger.info("Scraping OK. Nenhuma nova imagem.")
+            scraper_success = True
+        except KeyboardInterrupt as e: logger.warning("Scraping interrompido."); exception_during_scraping = e; scraper_success = False
+        except Exception as e: logger.error(f"Erro scraping: {e}", exc_info=True); exception_during_scraping = e; scraper_success = False
+        logger.info("--- Bloco do Scraper Finalizado ---")
 
-    # --- Bloco de Execução do Scraper ---
-    logger.info("--- Iniciando Scraper ---")
-    try:
-        # Importa o serviço SÓ quando necessário
-        from src.services.image_service import ImageService
-        image_service = ImageService(output_dir=args.output_dir)
-
-        logger.info("Pré-indexando imagens existentes...")
-        image_service.pre_check_monthly_images()
-
-        # Usa 'with' para garantir que os recursos do scraper (ex: sessão http) sejam fechados
-        with AbicomScraper(image_service=image_service) as scraper:
-            total_downloads = scraper.run(
-                start_page=args.start_page,
-                max_pages=args.max_pages
-            )
-
-        if total_downloads > 0:
-            logger.info(f"Scraping concluído. Total de {total_downloads} novas imagens baixadas.")
-        else:
-            logger.info("Scraping concluído. Nenhuma nova imagem foi baixada (ou todas já existiam).")
-        scraper_success = True # Scraper terminou sem lançar exceção
-
-    except KeyboardInterrupt as e:
-        logger.warning("Scraping interrompido pelo usuário.")
-        exception_during_scraping = e
-        scraper_success = False # Interrupção não é sucesso completo
-    except ImportError as e:
-        # Erro crítico se não conseguir importar componentes do scraper
-        logger.critical(f"Erro FATAL de importação durante o scraping: {e}. Verifique as dependências do scraper.", exc_info=True)
-        # Não tenta análise se o próprio scraper não pôde ser importado/montado
-        return 1
-    except Exception as e:
-        # Outros erros durante o scraping
-        logger.error(f"Erro durante a execução do scraping: {e}", exc_info=True) # Log completo do erro
-        exception_during_scraping = e
-        scraper_success = False
-    logger.info("--- Scraper Finalizado ---")
-    # --- Fim do Bloco Scraper ---
-
-
-    # --- Bloco de Execução da Análise ---
-    analysis_success = True # Assume sucesso a menos que falhe
-    if args.analyze:
-        logger.info("--- Iniciando Análise Avançada ---")
-        if analysis_function_available:
+        # --- 5. Bloco Análise (Salva CSVs Individuais por Mês) ---
+        analysis_success = True # Assume sucesso
+        # Roda se --analyze foi pedido E scraper OK (ou interrompido) E função existe
+        if args.analyze and (scraper_success or isinstance(exception_during_scraping, KeyboardInterrupt)) and analysis_function_available:
+            logger.info("--- 4. Iniciando Bloco da Análise (Salvando Tabelas Individuais) ---")
             try:
-                # Chama a função externa que faz todo o trabalho de análise e reporte
+                # Chama a função que salva tabelas individuais e reporta contagem
                 executar_e_reportar_analise(
                     diretorio_imagens=args.output_dir,
                     organizar_por_mes=ORGANIZE_BY_MONTH,
-                    diretorio_csv=data_dir_analysis # Passa o diretório 'data'
+                    diretorio_csv=data_dir_analysis, # Passa 'data', mas não salva CSV principal aqui
+                    num_workers=None # Usa default (os.cpu_count) - poderia ser argumento
                 )
-                # Log de sucesso já está dentro da função chamada
-            except Exception as e_analysis:
-                logger.error(f"Erro durante a execução da análise avançada: {e_analysis}", exc_info=True)
-                analysis_success = False # Marca que a análise falhou
-        else:
-            logger.error("Análise avançada solicitada (--analyze), mas a função não estava disponível devido a erro de importação anterior.")
-            analysis_success = False # Marca como falha se foi pedida mas não disponível
-        logger.info("--- Análise Finalizada ---")
-    else:
-         logger.info("Análise avançada não solicitada (flag --analyze não utilizada).")
-    # --- Fim do Bloco Análise ---
+                # Assume sucesso se não houve exceção. A função reporta sucessos/falhas no console.
+                # Para um controle mais fino do status final, poderíamos fazer
+                # executar_e_reportar_analise retornar True/False baseado nas contagens.
+                logger.info("Função de análise/salvamento de tabelas executada.")
+            except Exception as e_analysis: logger.error(f"Erro análise: {e_analysis}", exc_info=True); analysis_success = False
+            logger.info("--- Bloco da Análise Finalizado ---")
+        elif args.analyze and not analysis_function_available: logger.error("Análise solicitada, mas função indisponível."); analysis_success = False
+        elif args.analyze: logger.warning("Análise pulada por falha no scraper."); analysis_success = False
+        else: logger.info("Análise não solicitada.")
 
+        # REMOVIDO: Bloco de Tratamento do CSV Final
 
-    # --- Status Final de Saída ---
-    logger.info("--- Execução Concluída ---")
-    # Retorna 0 (sucesso) apenas se:
-    # - Scraper teve sucesso OU foi interrompido pelo usuário
-    # - E (Análise não foi solicitada OU (Análise foi solicitada E teve sucesso))
-    final_success = (scraper_success or isinstance(exception_during_scraping, KeyboardInterrupt)) and \
-                    (not args.analyze or analysis_success)
+        # --- 6. Status Final ---
+        logger.info("--- 5. Avaliando Status Final ---")
+        # Sucesso final depende apenas do scraper E da análise principal (se feita)
+        final_success = (scraper_success or isinstance(exception_during_scraping, KeyboardInterrupt)) and \
+                        (not args.analyze or (analysis_function_available and analysis_success))
+        if final_success: logger.info("Status final: Sucesso."); exit_code = 0
+        else: logger.error("Status final: Falha (ver logs)."); exit_code = 1; # Loga causas como antes
 
-    if final_success:
-        logger.info("Status final: Sucesso.")
-        return 0
-    else:
-        logger.error("Status final: Falha (verificar logs para detalhes).")
-        return 1
+    except Exception as main_err: logger.critical(f"Erro fatal main: {main_err}", exc_info=True); exit_code = 2
+    finally: logger.info(f"Finalizando execução. Código saída: {exit_code}"); logging.shutdown(); return exit_code
 
-
+# --- Ponto de Entrada Principal ---
 if __name__ == "__main__":
-    # Verifica se Pandas está disponível se a análise for solicitada
-    # Este check é básico, erros em outras dependências da análise serão pegos no import
-    if '--analyze' in sys.argv:
-        try:
-            import pandas
-        except ImportError:
-            # Loga o erro mas não sai imediatamente, deixa o try/except do import cuidar disso
-            logging.critical("Pandas (dependência da análise) não encontrado. Instale com 'pip install pandas'.")
-            # print("ERRO: Pandas é necessário...", file=sys.stderr) # Opcional
-            # print("Instale com: pip install pandas", file=sys.stderr)
-
-    # Chama a função principal e usa seu código de retorno para sair
-    exit_code = main()
-    sys.exit(exit_code)
+    # Logger já configurado no topo
+    logger.info(f"Executando script principal: {__file__}")
+    exit_code_final = main() # Chama a função main
+    print(f"Script finalizado. Código de saída: {exit_code_final}")
+    sys.exit(exit_code_final) # Sai com o código
